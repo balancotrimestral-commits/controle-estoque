@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle de Estoque</title>
+<style>
+  :root{--azul:#1F4E78;--azul2:#2E6DA4;--fundo:#F3F5F8;--borda:#D9DEE5;--txt:#1E2833;--mut:#64707D;
+        --verde:#1E7B4A;--verdeBg:#E3F4EA;--verm:#B42318;--vermBg:#FDE8E7;--amar:#8A5A00;--amarBg:#FFF3D6;--roxo:#5B3FA8;--roxoBg:#EEE9FB}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Roboto,Arial,sans-serif;background:var(--fundo);color:var(--txt);font-size:14px}
+  button{font:inherit;cursor:pointer;border:1px solid var(--borda);background:#fff;color:var(--txt);padding:7px 12px;border-radius:6px}
+  button:hover{border-color:var(--azul2)}
+  button.pri{background:var(--azul);color:#fff;border-color:var(--azul)}
+  button.pri:hover{background:var(--azul2)}
+  button.perigo{color:var(--verm);border-color:#F1B8B3}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input,select{font:inherit;padding:7px 9px;border:1px solid var(--borda);border-radius:6px;background:#fff;color:var(--txt)}
+  input:focus,select:focus{outline:2px solid #9CC3E8;border-color:var(--azul2)}
+  .hide{display:none!important}
+  /* login */
+  #telaLogin{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .cartao{background:#fff;border:1px solid var(--borda);border-radius:10px;padding:28px;width:100%;max-width:360px}
+  .cartao h1{font-size:20px;margin:0 0 4px;color:var(--azul)}
+  .cartao p{margin:0 0 18px;color:var(--mut)}
+  .cartao label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+  .cartao input{width:100%}
+  .cartao button{width:100%;margin-top:18px;padding:10px}
+  .erro{color:var(--verm);font-size:13px;margin-top:10px;min-height:18px}
+  /* app */
+  header{background:var(--azul);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px;flex-wrap:wrap}
+  header b{font-size:16px;margin-right:auto}
+  header span{font-size:13px;opacity:.85}
+  header button{background:transparent;color:#fff;border-color:rgba(255,255,255,.4);padding:5px 10px}
+  nav{display:flex;gap:2px;background:#fff;border-bottom:1px solid var(--borda);padding:0 12px;overflow-x:auto}
+  nav button{border:0;border-bottom:3px solid transparent;border-radius:0;padding:12px 14px;white-space:nowrap;color:var(--mut);background:none}
+  nav button.ativo{color:var(--azul);border-bottom-color:var(--azul);font-weight:600}
+  main{padding:16px 18px 40px;max-width:1500px;margin:0 auto}
+  .barra{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+  .barra .esp{flex:1}
+  .dica{color:var(--mut);font-size:13px;margin:-4px 0 12px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .chip{background:#fff;border:1px solid var(--borda);border-radius:8px;padding:8px 12px;min-width:110px}
+  .chip small{display:block;color:var(--mut);font-size:12px}
+  .chip b{font-size:18px}
+  .tabela{background:#fff;border:1px solid var(--borda);border-radius:8px;overflow:auto;max-height:68vh}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th{position:sticky;top:0;background:#E9EEF4;text-align:left;padding:8px;border-bottom:1px solid var(--borda);white-space:nowrap;z-index:1}
+  td{padding:5px 8px;border-bottom:1px solid #EDF0F3;white-space:nowrap}
+  td.desc{white-space:normal;min-width:220px}
+  td.n,th.n{text-align:right}
+  tr:hover td{background:#F7FAFD}
+  td input{width:96px;padding:4px 6px;text-align:right}
+  td input.txt{width:180px;text-align:left}
+  td select{padding:4px 6px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600}
+  .t-Certo,.t-Correto{background:var(--verdeBg);color:var(--verde)}
+  .t-Divergente,.t-Baixa{background:var(--vermBg);color:var(--verm)}
+  .t-Baixa24{background:var(--amarBg);color:var(--amar)}
+  .t-Falha{background:var(--roxoBg);color:var(--roxo)}
+  .t-conferencia{background:var(--amarBg);color:var(--amar)}
+  .t-correcao{background:var(--roxoBg);color:var(--roxo)}
+  .t-fechado{background:var(--verdeBg);color:var(--verde)}
+  .neg{color:var(--verm)} .pos{color:var(--roxo)}
+  .salvo{animation:pisca 1s}
+  @keyframes pisca{from{background:#D8F0E1}to{background:transparent}}
+  .vazio{padding:30px;text-align:center;color:var(--mut)}
+  .aviso{background:var(--amarBg);color:var(--amar);border:1px solid #F2D48A;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+  /* modal */
+  .fundoModal{position:fixed;inset:0;background:rgba(15,25,40,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal{background:#fff;border-radius:10px;padding:22px;width:100%;max-width:520px;max-height:90vh;overflow:auto}
+  .modal h2{margin:0 0 12px;font-size:18px;color:var(--azul)}
+  .modal label{display:block;font-size:13px;color:var(--mut);margin:12px 0 4px}
+  .modal input[type=text],.modal input[type=date],.modal input[type=file]{width:100%}
+  .modal .acoes{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+  .check{display:flex!important;gap:8px;align-items:flex-start;color:var(--txt)!important}
+  .previa{background:var(--fundo);border-radius:6px;padding:10px;font-size:13px;margin-top:10px;white-space:pre-line}
+  /* toast / carregando */
+  #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1E2833;color:#fff;padding:10px 16px;border-radius:8px;z-index:60;max-width:90vw}
+  #toast.erroT{background:var(--verm)}
+  #carregando{position:fixed;inset:0;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;z-index:70;font-weight:600;color:var(--azul)}
+  /* dashboard */
+  .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:12px}
+  .painel{background:#fff;border:1px solid var(--borda);border-radius:8px;padding:14px}
+  .painel h3{margin:0 0 10px;font-size:14px;color:var(--mut);font-weight:600}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+  .kpi{background:#fff;border:1px solid var(--borda);border-radius:8px;padding:12px}
+  .kpi small{color:var(--mut);font-size:12px;display:block}
+  .kpi b{font-size:22px;display:block;margin-top:2px}
+  .kpi span{font-size:12px;color:var(--mut)}
+  canvas{max-height:280px}
+  @media (max-width:640px){main{padding:12px 10px 40px} .chip{min-width:46%} header b{font-size:15px} .barra select{max-width:100%} .opc{display:none} td.desc{min-width:130px}}
+</style>
+</head>
+<body>
+
+<!-- ============================ LOGIN ============================ -->
+<div id="telaLogin">
+  <form class="cartao" id="formLogin">
+    <h1>Controle de Estoque</h1>
+    <p>Conferência e inventário</p>
+    <div id="avisoConfig" class="aviso hide">Sistema ainda não configurado: preencha SUPABASE_URL e SUPABASE_KEY no início do arquivo index.html.</div>
+    <label for="email">E-mail</label>
+    <input id="email" type="email" autocomplete="username" required>
+    <label for="senha">Senha</label>
+    <input id="senha" type="password" autocomplete="current-password" required>
+    <button class="pri" type="submit">Entrar</button>
+    <div class="erro" id="erroLogin"></div>
+  </form>
+</div>
+
+<!-- ============================ SISTEMA ============================ -->
+<div id="telaApp" class="hide">
+  <header>
+    <b>Controle de Estoque</b>
+    <span id="usuario"></span>
+    <button id="btnSair">Sair</button>
+  </header>
+  <nav id="abas">
+    <button data-aba="amostragem" class="ativo">Amostragem</button>
+    <button data-aba="inventario">Inventário</button>
+    <button data-aba="dadosinv">Dados Inventário</button>
+    <button data-aba="estoque">Estoque</button>
+    <button data-aba="hoje">Dados Estoque Hoje</button>
+    <button data-aba="dashboard">Dashboard</button>
+  </nav>
+  <main>
+
+    <!-- AMOSTRAGEM -->
+    <section id="aba-amostragem">
+      <div class="barra">
+        <select id="amoCiclo" aria-label="Ciclo"></select>
+        <span id="amoStatus"></span>
+        <span class="esp"></span>
+        <button class="pri" id="amoNovo">+ Novo ciclo (importar Excel)</button>
+        <button id="amoEnviar">Enviar para Inventário ➜</button>
+        <button id="amoExport">Exportar Excel</button>
+        <button class="perigo" id="amoExcluir">Excluir ciclo</button>
+      </div>
+      <p class="dica">Digite a contagem física em <b>Amostra Conferida</b>. Divergência, Status e Dado Identificado são calculados na hora. Enter pula para o próximo item.</p>
+      <div class="chips" id="amoChips"></div>
+      <div class="barra">
+        <input id="amoBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
+        <select id="amoFiltro">
+          <option value="">Todos</option><option value="pend">Pendentes</option>
+          <option value="Correto">Correto</option><option value="Divergente">Divergente</option>
+        </select>
+      </div>
+      <div class="tabela" id="amoTabela"></div>
+    </section>
+
+    <!-- INVENTÁRIO -->
+    <section id="aba-inventario" class="hide">
+      <div class="barra">
+        <select id="invCiclo" aria-label="Ciclo"></select>
+        <input id="invBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
+        <span class="esp"></span>
+        <button id="invExport">Exportar Excel</button>
+      </div>
+      <p class="dica">Resultado da conferência já enviada pela Amostragem (saldo contado × valor unitário). Somente leitura.</p>
+      <div class="chips" id="invChips"></div>
+      <div class="tabela" id="invTabela"></div>
+    </section>
+
+    <!-- DADOS INVENTÁRIO -->
+    <section id="aba-dadosinv" class="hide">
+      <div class="barra">
+        <select id="diCiclo" aria-label="Ciclo"></select>
+        <span id="diStatus"></span>
+        <span class="esp"></span>
+        <button class="pri" id="diFechar">Fechar ciclo e atualizar Estoque ✔</button>
+        <button id="diVoltar">Voltar para Amostragem</button>
+        <button id="diReabrir">Reabrir correção</button>
+        <button id="diExport">Exportar Excel</button>
+      </div>
+      <p class="dica">Classifique cada divergência em <b>Ajuste</b> e confirme o <b>Saldo ajustado</b> (que vai para o Estoque). Esses dados alimentam o Dashboard.</p>
+      <div class="chips" id="diChips"></div>
+      <div class="barra">
+        <input id="diBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
+        <select id="diFiltro">
+          <option value="div">Somente divergentes</option><option value="">Todos</option>
+          <option value="Certo">Ajuste: Certo</option><option value="Baixa">Ajuste: Baixa</option>
+          <option value="Baixa 24 Horas">Ajuste: Baixa 24 Horas</option><option value="Falha Protheus">Ajuste: Falha Protheus</option>
+        </select>
+      </div>
+      <div class="tabela" id="diTabela"></div>
+    </section>
+
+    <!-- ESTOQUE -->
+    <section id="aba-estoque" class="hide">
+      <div class="barra">
+        <select id="estData" aria-label="Ciclo"></select>
+        <input id="estBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
+        <span class="esp"></span>
+        <button id="estExport">Exportar Excel</button>
+      </div>
+      <p class="dica">Saldo final de cada item depois de conferido e ajustado (último ciclo fechado em que o item apareceu).</p>
+      <div class="chips" id="estChips"></div>
+      <div class="tabela" id="estTabela"></div>
+    </section>
+
+    <!-- DADOS ESTOQUE HOJE -->
+    <section id="aba-hoje" class="hide">
+      <div class="barra">
+        <select id="hojeData" aria-label="Importação"></select>
+        <input id="hojeBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
+        <span class="esp"></span>
+        <button class="pri" id="hojeImportar">+ Anexar Excel</button>
+        <button id="hojeExport">Exportar Excel</button>
+        <button class="perigo" id="hojeExcluir">Excluir esta importação</button>
+      </div>
+      <p class="dica">Dados reais puxados do sistema, apenas para consulta. Não alteram nenhuma outra tela.</p>
+      <div class="chips" id="hojeChips"></div>
+      <div class="tabela" id="hojeTabela"></div>
+    </section>
+
+    <!-- DASHBOARD -->
+    <section id="aba-dashboard" class="hide">
+      <div class="barra">
+        <select id="dashCiclo" aria-label="Ciclo"></select>
+        <span class="esp"></span>
+        <button id="dashExport">Exportar comparativo</button>
+      </div>
+      <div id="dashAviso"></div>
+      <div class="kpis" id="dashKpis"></div>
+      <div class="grade">
+        <div class="painel"><h3>Classificação final do ciclo</h3><canvas id="gClass"></canvas></div>
+        <div class="painel"><h3>Acurácia da contagem por ciclo</h3><canvas id="gAcur"></canvas></div>
+      </div>
+      <div class="grade">
+        <div class="painel"><h3>Comparativo por ciclo</h3><canvas id="gComp"></canvas></div>
+        <div class="painel"><h3>Impacto financeiro por ciclo (R$)</h3><canvas id="gImp"></canvas></div>
+      </div>
+      <div class="painel" style="margin-bottom:12px"><h3>Comparativo geral</h3><div class="tabela" id="dashTabela" style="max-height:none"></div></div>
+      <div class="painel"><h3>10 maiores divergências do ciclo (R$)</h3><div class="tabela" id="dashTop" style="max-height:none"></div></div>
+    </section>
+  </main>
+</div>
+
+<!-- MODAL: novo ciclo -->
+<div class="fundoModal hide" id="mNovo">
+  <div class="modal">
+    <h2>Novo ciclo de conferência</h2>
+    <label for="nArquivo">Planilha Excel com os dados do sistema (saldo em estoque)</label>
+    <input type="file" id="nArquivo" accept=".xlsx,.xlsm,.xls,.csv">
+    <label for="nData">Data da conferência</label>
+    <input type="date" id="nData">
+    <label for="nDesc">Descrição (opcional)</label>
+    <input type="text" id="nDesc" placeholder="Ex.: Inventário Novembro/2026">
+    <label class="check"><input type="checkbox" id="nHist"> <span>Arquivo de histórico (já tem a coluna <b>Amostra Conferida</b> e uma <b>Data</b> por linha). Cria um ciclo por data, já fechado.</span></label>
+    <div class="previa hide" id="nPrevia"></div>
+    <div class="acoes"><button id="nCancelar">Cancelar</button><button class="pri" id="nOk" disabled>Importar</button></div>
+  </div>
+</div>
+
+<!-- MODAL: importar estoque hoje -->
+<div class="fundoModal hide" id="mHoje">
+  <div class="modal">
+    <h2>Anexar Dados Estoque Hoje</h2>
+    <label for="hArquivo">Planilha Excel do sistema</label>
+    <input type="file" id="hArquivo" accept=".xlsx,.xlsm,.xls,.csv">
+    <label for="hData">Data dos dados (usada se a planilha não tiver coluna Data)</label>
+    <input type="date" id="hData">
+    <div class="previa hide" id="hPrevia"></div>
+    <div class="acoes"><button id="hCancelar">Cancelar</button><button class="pri" id="hOk" disabled>Importar</button></div>
+  </div>
+</div>
+
+<div id="toast" class="hide"></div>
+<div id="carregando" class="hide">Carregando…</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+/* =====================================================================
+   CONFIGURAÇÃO — cole aqui os dados do seu projeto Supabase
+   (Supabase > Project Settings > API)
+   ===================================================================== */
+const SUPABASE_URL = 'https://hdfsgwuuhtgosiijzcbc.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_PH1bNp4yYvhxJaO_YLDIiQ_CoN2o2sC';
+
+/* ===================================================================== */
+const $ = id => document.getElementById(id);
+const AJUSTES = ['Certo', 'Baixa', 'Baixa 24 Horas', 'Falha Protheus'];
+const STATUS_CICLO = { conferencia: 'Em conferência', correcao: 'Em correção', fechado: 'Fechado' };
+let sb = null, ciclos = [], usuarioEmail = '';
+const cache = {};          // itens por ciclo
+const graficos = {};
+
+/* ---------- utilidades ---------- */
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
+const rf = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const pf = new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fN = v => v === null || v === undefined || v === '' ? '' : nf.format(v);
+const fR = v => v === null || v === undefined || v === '' || isNaN(v) ? '' : rf.format(v);
+const fP = v => v === null || v === undefined || !isFinite(v) ? '–' : pf.format(v);
+const fD = iso => iso ? iso.slice(0, 10).split('-').reverse().join('/') : '';
+const num = v => v === null || v === undefined || v === '' ? null : Number(v);
+const classeTag = t => ({ 'Baixa 24 Horas': 'Baixa24', 'Falha Protheus': 'Falha' }[t] || t);
+const tag = t => t ? `<span class="tag t-${classeTag(t)}">${esc(t)}</span>` : '';
+const sinal = v => v === null || v === undefined ? '' : `<span class="${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${v > 0 ? '+' : ''}${fN(v)}</span>`;
+const nomeCiclo = c => `${fD(c.data_ref)}${c.descricao ? ' · ' + c.descricao : ''} — ${STATUS_CICLO[c.status]}`;
+
+function toast(msg, erro = false) {
+  const t = $('toast'); t.textContent = msg; t.className = erro ? 'erroT' : '';
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.className = 'hide', erro ? 6000 : 2600);
+}
+function carregando(on) { $('carregando').classList.toggle('hide', !on); }
+function falha(e) {
+  console.error(e);
+  let m = e?.message || String(e);
+  if (/Invalid login/i.test(m)) m = 'E-mail ou senha incorretos.';
+  if (/Failed to fetch/i.test(m)) m = 'Sem conexão com o servidor. Verifique a internet.';
+  toast(m, true);
+}
+async function ok(promise) { const { data, error } = await promise; if (error) throw error; return data; }
+
+// Busca todas as linhas (o Supabase devolve no máximo 1000 por vez)
+async function buscarTudo(montar) {
+  const tam = 1000; let ini = 0, todas = [];
+  while (true) {
+    const lote = await ok(montar().range(ini, ini + tam - 1));
+    todas = todas.concat(lote);
+    if (lote.length < tam) break;
+    ini += tam;
+  }
+  return todas;
+}
+async function inserirEmLotes(tabela, linhas) {
+  for (let i = 0; i < linhas.length; i += 500) await ok(sb.from(tabela).insert(linhas.slice(i, i + 500)));
+}
+function exportar(nome, linhas) {
+  if (!linhas.length) return toast('Nada para exportar.');
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Dados');
+  XLSX.writeFile(wb, nome + '.xlsx');
+}
+const filtraBusca = (lista, termo) => {
+  termo = (termo || '').trim().toUpperCase();
+  return termo ? lista.filter(i => (i.codigo + ' ' + (i.descricao || '')).toUpperCase().includes(termo)) : lista;
+};
+
+/* ---------- leitura de Excel ---------- */
+const normaliza = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const COLUNAS = {
+  codigo: ['CODIGO', 'COD', 'CODIGOPRODUTO', 'PRODUTO'],
+  descricao: ['DESCRICAO', 'DESCRICAOPRODUTO'],
+  unidade: ['UNIDADE', 'UM', 'UNID', 'UNIDADEMEDIDA'],
+  armazem: ['ARMAZEM', 'ARMZ', 'ARM', 'LOCAL'],
+  saldo: ['SALDOEMESTOQUE', 'SALDO', 'SALDOATUAL', 'QUANTIDADE', 'QTD', 'SALDOESTOQUE'],
+  valor_total: ['VALOREMESTOQUE', 'VALORTOTAL', 'VALORTOTALR', 'VALOR', 'VALORESTOQUE'],
+  conferido: ['AMOSTRACONFERIDA', 'CONFERIDO', 'CONFERENCIA', 'CONTAGEM', 'QTDCONFERIDA'],
+  ajuste: ['AJUSTE', 'DADOIDENTIFICADO'],
+  data: ['DATA', 'DATAMES', 'DATACONFERENCIA']
+};
+function paraNumero(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return v;
+  let s = String(v).trim().replace(/R\$|\s/g, '');
+  if (s === '' || s === '-') return null;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s); return isNaN(n) ? null : n;
+}
+function paraData(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date && !isNaN(v)) {
+    const d = new Date(v.getTime() + 12 * 3600 * 1000); // evita erro de fuso
+    return d.toISOString().slice(0, 10);
+  }
+  if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400000) + 12 * 3600 * 1000); return d.toISOString().slice(0, 10); }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) { const a = m[3].length === 2 ? '20' + m[3] : m[3]; return `${a}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[0] : null;
+}
+async function lerExcel(arquivo) {
+  const buf = await arquivo.arrayBuffer();
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  for (const nomeAba of wb.SheetNames) {
+    const linhas = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, raw: true, defval: null });
+    for (let h = 0; h < Math.min(linhas.length, 20); h++) {
+      const cab = (linhas[h] || []).map(normaliza);
+      const idx = {};
+      for (const [campo, nomes] of Object.entries(COLUNAS)) {
+        const i = cab.findIndex(c => nomes.includes(c));
+        if (i >= 0) idx[campo] = i;
+      }
+      if (idx.codigo === undefined || idx.saldo === undefined) continue;
+      const itens = [];
+      for (const l of linhas.slice(h + 1)) {
+        if (!l) continue;
+        const codigo = String(l[idx.codigo] ?? '').trim();
+        if (!codigo || ['CODIGO', 'TOTAL', 'TOTALGERAL'].includes(normaliza(codigo))) continue;
+        const pega = c => idx[c] === undefined ? null : l[idx[c]];
+        let ajuste = pega('ajuste'); ajuste = AJUSTES.find(a => normaliza(a) === normaliza(ajuste)) || null;
+        itens.push({
+          codigo,
+          descricao: pega('descricao') == null ? null : String(pega('descricao')).trim(),
+          unidade: pega('unidade') == null ? null : String(pega('unidade')).trim(),
+          armazem: pega('armazem') == null ? '' : String(pega('armazem')).trim(),
+          saldo: paraNumero(pega('saldo')) ?? 0,
+          valor_total: paraNumero(pega('valor_total')),
+          conferido: paraNumero(pega('conferido')),
+          ajuste,
+          data: paraData(pega('data'))
+        });
+      }
+      return { aba: nomeAba, itens, temConferido: idx.conferido !== undefined, temData: idx.data !== undefined };
+    }
+  }
+  throw new Error('Não encontrei as colunas "Código" e "Saldo em Estoque" na planilha.');
+}
+// Junta linhas repetidas (mesma data + código + armazém)
+function agrupar(itens) {
+  const mapa = new Map(); let repetidos = 0;
+  for (const i of itens) {
+    const k = [i.data, i.codigo, i.armazem].join('|');
+    const j = mapa.get(k);
+    if (!j) { mapa.set(k, { ...i }); continue; }
+    repetidos++;
+    j.saldo += i.saldo;
+    if (i.valor_total != null) j.valor_total = (j.valor_total ?? 0) + i.valor_total;
+    if (i.conferido != null) j.conferido = (j.conferido ?? 0) + i.conferido;
+    j.ajuste = j.ajuste || i.ajuste;
+  }
+  return { itens: [...mapa.values()], repetidos };
+}
+
+/* ---------- login ---------- */
+async function iniciar() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) { $('avisoConfig').classList.remove('hide'); return; }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const { data } = await sb.auth.getSession();
+  if (data.session) entrar(data.session);
+  sb.auth.onAuthStateChange((ev, sessao) => { if (ev === 'SIGNED_OUT') sair(true); });
+}
+$('formLogin').addEventListener('submit', async e => {
+  e.preventDefault(); $('erroLogin').textContent = '';
+  if (!sb) return;
+  carregando(true);
+  const { data, error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('senha').value });
+  carregando(false);
+  if (error) { $('erroLogin').textContent = /Invalid login/i.test(error.message) ? 'E-mail ou senha incorretos.' : error.message; return; }
+  entrar(data.session);
+});
+async function entrar(sessao) {
+  usuarioEmail = sessao.user.email; $('usuario').textContent = usuarioEmail;
+  $('telaLogin').classList.add('hide'); $('telaApp').classList.remove('hide');
+  await carregarCiclos();
+  abrirAba('amostragem');
+}
+async function sair(jaSaiu) {
+  if (!jaSaiu && sb) await sb.auth.signOut();
+  $('telaApp').classList.add('hide'); $('telaLogin').classList.remove('hide'); $('senha').value = '';
+}
+$('btnSair').onclick = () => sair(false);
+
+/* ---------- abas ---------- */
+let abaAtual = 'amostragem';
+$('abas').addEventListener('click', e => { const b = e.target.closest('button[data-aba]'); if (b) abrirAba(b.dataset.aba); });
+async function abrirAba(aba) {
+  abaAtual = aba;
+  document.querySelectorAll('#abas button').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
+  document.querySelectorAll('main > section').forEach(s => s.classList.toggle('hide', s.id !== 'aba-' + aba));
+  try {
+    carregando(true);
+    if (aba === 'amostragem') await telaAmostragem();
+    if (aba === 'inventario') await telaInventario();
+    if (aba === 'dadosinv') await telaDadosInv();
+    if (aba === 'estoque') await telaEstoque();
+    if (aba === 'hoje') await telaHoje();
+    if (aba === 'dashboard') await telaDashboard();
+  } catch (e) { falha(e); } finally { carregando(false); }
+}
+
+/* ---------- ciclos ---------- */
+async function carregarCiclos() {
+  ciclos = await ok(sb.from('ciclos').select('*').order('data_ref', { ascending: false }).order('id', { ascending: false }));
+}
+function preencherSelect(sel, lista, valorPadrao, vazio) {
+  const atual = sel.value;
+  sel.innerHTML = lista.length ? lista.map(c => `<option value="${c.id}">${esc(nomeCiclo(c))}</option>`).join('') : `<option value="">${vazio}</option>`;
+  const ids = lista.map(c => String(c.id));
+  sel.value = ids.includes(String(valorPadrao)) ? String(valorPadrao) : ids.includes(atual) ? atual : (ids[0] || '');
+}
+const cicloPorId = id => ciclos.find(c => String(c.id) === String(id));
+async function itensDoCiclo(id, forcar) {
+  if (!id) return [];
+  if (!cache[id] || forcar) cache[id] = await buscarTudo(() => sb.from('itens').select('*').eq('ciclo_id', id).order('descricao').order('id'));
+  return cache[id];
+}
+let cicloSelecionado = null; // mantém o mesmo ciclo entre as telas
+
+/* =====================================================================
+   AMOSTRAGEM
+   ===================================================================== */
+async function telaAmostragem() {
+  preencherSelect($('amoCiclo'), ciclos, cicloSelecionado || (ciclos.find(c => c.status === 'conferencia') || {}).id, 'Nenhum ciclo — clique em "Novo ciclo"');
+  await desenharAmostragem();
+}
+$('amoCiclo').onchange = () => { cicloSelecionado = $('amoCiclo').value; abrirAba('amostragem'); };
+$('amoBusca').oninput = () => desenharAmostragem();
+$('amoFiltro').onchange = () => desenharAmostragem();
+async function desenharAmostragem() {
+  const c = cicloPorId($('amoCiclo').value);
+  const itens = c ? await itensDoCiclo(c.id) : [];
+  const editavel = c && c.status === 'conferencia';
+  $('amoStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
+  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExport').disabled = !c;
+  const conf = itens.filter(i => i.conferido !== null);
+  const corr = conf.filter(i => i.status === 'Correto').length;
+  $('amoChips').innerHTML = c ? `
+    <div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
+    <div class="chip"><small>Conferidos</small><b>${fN(conf.length)}</b></div>
+    <div class="chip"><small>Pendentes</small><b>${fN(itens.length - conf.length)}</b></div>
+    <div class="chip"><small>Corretos</small><b style="color:var(--verde)">${fN(corr)}</b></div>
+    <div class="chip"><small>Divergentes</small><b style="color:var(--verm)">${fN(conf.length - corr)}</b></div>
+    <div class="chip"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>` : '';
+  let lista = filtraBusca(itens, $('amoBusca').value);
+  const f = $('amoFiltro').value;
+  if (f === 'pend') lista = lista.filter(i => i.conferido === null);
+  else if (f) lista = lista.filter(i => i.status === f);
+  if (!c) { $('amoTabela').innerHTML = '<div class="vazio">Crie um ciclo importando a planilha do sistema.</div>'; return; }
+  if (!lista.length) { $('amoTabela').innerHTML = '<div class="vazio">Nenhum item.</div>'; return; }
+  $('amoTabela').innerHTML = `<table><thead><tr><th class="opc">Data</th><th>Código</th><th>Descrição</th><th class="opc">Unidade</th><th class="opc">Armazém</th>
+    <th class="n">Saldo em Estoque</th><th class="n">Amostra Conferida</th><th class="n">Divergência</th><th>Status</th><th>Dado Identificado</th>
+    <th class="n opc">Valor Unitário</th><th class="n opc">Valor Total</th></tr></thead><tbody>${lista.map(i => linhaAmostragem(i, c, editavel)).join('')}</tbody></table>`;
+}
+function linhaAmostragem(i, c, editavel) {
+  return `<tr data-id="${i.id}"><td class="opc">${fD(c.data_ref)}</td><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="opc">${esc(i.unidade)}</td><td class="opc">${esc(i.armazem)}</td>
+    <td class="n">${fN(i.saldo_sistema)}</td>
+    <td class="n">${editavel ? `<input class="inpConf" inputmode="decimal" value="${i.conferido ?? ''}" data-id="${i.id}" aria-label="Amostra conferida ${esc(i.codigo)}">` : fN(i.conferido)}</td>
+    <td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.status)}</td><td>${tag(i.tipo)}</td>
+    <td class="n opc">${fR(num(i.valor_unit))}</td><td class="n opc">${fR(num(i.valor_total))}</td></tr>`;
+}
+$('amoTabela').addEventListener('change', async e => {
+  const inp = e.target.closest('.inpConf'); if (!inp) return;
+  const id = Number(inp.dataset.id), v = paraNumero(inp.value);
+  if (inp.value.trim() !== '' && v === null) { toast('Valor inválido.', true); return; }
+  try {
+    const novo = await ok(sb.from('itens').update({ conferido: v }).eq('id', id).select().single());
+    const lista = cache[novo.ciclo_id]; const k = lista.findIndex(x => x.id === id); lista[k] = novo;
+    const tr = inp.closest('tr'); const c = cicloPorId(novo.ciclo_id);
+    const tmp = document.createElement('tbody'); tmp.innerHTML = linhaAmostragem(novo, c, true);
+    const nova = tmp.firstElementChild;
+    [...tr.children].forEach((td, n) => { if (n !== 6) td.innerHTML = nova.children[n].innerHTML; });
+    tr.classList.remove('salvo'); void tr.offsetWidth; tr.classList.add('salvo');
+    atualizarChipsAmostragem();
+  } catch (err) { falha(err); }
+});
+$('amoTabela').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !e.target.classList.contains('inpConf')) return;
+  e.preventDefault();
+  const todos = [...document.querySelectorAll('#amoTabela .inpConf')];
+  const prox = todos[todos.indexOf(e.target) + 1];
+  e.target.blur(); if (prox) { prox.focus(); prox.select(); }
+});
+function atualizarChipsAmostragem() {
+  const c = cicloPorId($('amoCiclo').value); const itens = cache[c.id] || [];
+  const conf = itens.filter(i => i.conferido !== null); const corr = conf.filter(i => i.status === 'Correto').length;
+  const b = $('amoChips').querySelectorAll('b');
+  if (b.length === 6) { b[1].textContent = fN(conf.length); b[2].textContent = fN(itens.length - conf.length); b[3].textContent = fN(corr); b[4].textContent = fN(conf.length - corr); b[5].textContent = fP(conf.length ? corr / conf.length : null); }
+}
+$('amoEnviar').onclick = async () => {
+  const c = cicloPorId($('amoCiclo').value); if (!c) return;
+  const itens = await itensDoCiclo(c.id); const pend = itens.filter(i => i.conferido === null).length;
+  const msg = pend ? `Ainda há ${pend} item(ns) sem contagem. Eles irão para o inventário sem conferência (o saldo do sistema é mantido).\n\nEnviar mesmo assim?` : 'Enviar a conferência para Inventário / Dados Inventário?';
+  if (!confirm(msg)) return;
+  try {
+    carregando(true);
+    await ok(sb.rpc('enviar_para_inventario', { p_ciclo: c.id }));
+    await carregarCiclos(); delete cache[c.id]; cicloSelecionado = c.id;
+    toast('Conferência enviada para o Inventário.');
+    abrirAba('dadosinv');
+  } catch (e) { falha(e); carregando(false); }
+};
+$('amoExcluir').onclick = async () => {
+  const c = cicloPorId($('amoCiclo').value); if (!c) return;
+  const texto = prompt(`Isto apaga o ciclo ${fD(c.data_ref)} e TODOS os seus itens, sem volta.\nPara confirmar, digite EXCLUIR:`);
+  if (texto !== 'EXCLUIR') return;
+  try { carregando(true); await ok(sb.from('ciclos').delete().eq('id', c.id)); delete cache[c.id]; cicloSelecionado = null; await carregarCiclos(); toast('Ciclo excluído.'); abrirAba('amostragem'); }
+  catch (e) { falha(e); carregando(false); }
+};
+$('amoExport').onclick = async () => {
+  const c = cicloPorId($('amoCiclo').value); if (!c) return;
+  const itens = await itensDoCiclo(c.id);
+  exportar(`Amostragem_${c.data_ref}`, itens.map(i => ({ 'Data': fD(c.data_ref), 'Código': i.codigo, 'Descrição': i.descricao, 'Unidade': i.unidade, 'Armazém': i.armazem,
+    'Saldo em Estoque': num(i.saldo_sistema), 'Amostra Conferida': num(i.conferido), 'Divergência': num(i.divergencia), 'Status': i.status, 'Dado Identificado': i.tipo,
+    'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total) })));
+};
+
+/* ---------- novo ciclo (importação) ---------- */
+let lidoNovo = null;
+$('amoNovo').onclick = () => {
+  lidoNovo = null; $('nArquivo').value = ''; $('nDesc').value = ''; $('nHist').checked = false;
+  $('nData').value = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+  $('nPrevia').classList.add('hide'); $('nOk').disabled = true; $('mNovo').classList.remove('hide');
+};
+$('nCancelar').onclick = () => $('mNovo').classList.add('hide');
+$('nArquivo').onchange = async () => {
+  const f = $('nArquivo').files[0]; if (!f) return;
+  try {
+    carregando(true); lidoNovo = await lerExcel(f);
+    const datas = [...new Set(lidoNovo.itens.map(i => i.data).filter(Boolean))].sort();
+    if (datas.length === 1) $('nData').value = datas[0];
+    if (lidoNovo.temConferido && datas.length) $('nHist').checked = true;
+    $('nPrevia').textContent = `Aba "${lidoNovo.aba}": ${lidoNovo.itens.length} linhas encontradas.` +
+      (datas.length ? `\nDatas na planilha: ${datas.map(fD).join(', ')}` : '') +
+      (lidoNovo.temConferido ? '\nA planilha já tem a coluna de conferência.' : '');
+    $('nPrevia').classList.remove('hide'); $('nOk').disabled = !lidoNovo.itens.length;
+  } catch (e) { falha(e); $('nOk').disabled = true; } finally { carregando(false); }
+};
+$('nOk').onclick = async () => {
+  if (!lidoNovo) return;
+  const hist = $('nHist').checked;
+  try {
+    carregando(true);
+    let grupos;
+    if (hist) {
+      if (lidoNovo.itens.some(i => !i.data)) throw new Error('No modo histórico todas as linhas precisam ter a coluna Data preenchida.');
+      grupos = {}; lidoNovo.itens.forEach(i => (grupos[i.data] = grupos[i.data] || []).push(i));
+    } else {
+      if (!$('nData').value) throw new Error('Informe a data da conferência.');
+      grupos = { [$('nData').value]: lidoNovo.itens.map(i => ({ ...i, data: $('nData').value })) };
+    }
+    let totalRep = 0, criados = [];
+    for (const [data, lista] of Object.entries(grupos).sort()) {
+      const { itens, repetidos } = agrupar(lista); totalRep += repetidos;
+      const ciclo = await ok(sb.from('ciclos').insert({ data_ref: data, descricao: $('nDesc').value.trim() || null }).select().single());
+      try {
+        await inserirEmLotes('itens', itens.map(i => ({
+          ciclo_id: ciclo.id, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, armazem: i.armazem,
+          saldo_sistema: i.saldo, valor_total: i.valor_total, conferido: hist ? i.conferido : null, ajuste: hist ? i.ajuste : null })));
+      } catch (e) { await sb.from('ciclos').delete().eq('id', ciclo.id); throw e; }
+      if (hist) { await ok(sb.rpc('enviar_para_inventario', { p_ciclo: ciclo.id })); await ok(sb.rpc('fechar_ciclo', { p_ciclo: ciclo.id })); }
+      criados.push(ciclo.id);
+    }
+    $('mNovo').classList.add('hide');
+    await carregarCiclos(); cicloSelecionado = criados[criados.length - 1];
+    toast(`${criados.length} ciclo(s) criado(s).` + (totalRep ? ` ${totalRep} linha(s) repetida(s) foram somadas.` : ''));
+    abrirAba(hist ? 'dashboard' : 'amostragem');
+  } catch (e) { falha(e); carregando(false); }
+};
+
+/* =====================================================================
+   INVENTÁRIO
+   ===================================================================== */
+async function telaInventario() {
+  const lista = ciclos.filter(c => c.status !== 'conferencia');
+  const sel = $('invCiclo'); const atual = sel.value;
+  sel.innerHTML = `<option value="todos">Todos os ciclos conferidos</option>` + lista.map(c => `<option value="${c.id}">${esc(nomeCiclo(c))}</option>`).join('');
+  const ids = ['todos', ...lista.map(c => String(c.id))];
+  sel.value = ids.includes(String(cicloSelecionado)) && atual !== 'todos' ? String(cicloSelecionado) : ids.includes(atual) ? atual : 'todos';
+  await desenharInventario();
+}
+$('invCiclo').onchange = () => { if ($('invCiclo').value !== 'todos') cicloSelecionado = $('invCiclo').value; abrirAba('inventario'); };
+$('invBusca').oninput = () => desenharInventario();
+async function linhasInventario() {
+  const v = $('invCiclo').value;
+  const alvo = v === 'todos' ? ciclos.filter(c => c.status !== 'conferencia') : [cicloPorId(v)].filter(Boolean);
+  let linhas = [];
+  for (const c of alvo.slice().sort((a, b) => a.data_ref.localeCompare(b.data_ref))) {
+    (await itensDoCiclo(c.id)).forEach(i => {
+      const saldo = num(i.conferido ?? i.saldo_sistema);
+      linhas.push({ c, i, saldo, vu: num(i.valor_unit), vt: i.valor_unit == null ? null : saldo * num(i.valor_unit) });
+    });
+  }
+  return linhas;
+}
+async function desenharInventario() {
+  const linhas = await linhasInventario();
+  const vis = linhas.filter(l => filtraBusca([l.i], $('invBusca').value).length);
+  $('invChips').innerHTML = `<div class="chip"><small>Itens</small><b>${fN(vis.length)}</b></div>
+    <div class="chip"><small>Valor total</small><b>${fR(vis.reduce((s, l) => s + (l.vt || 0), 0))}</b></div>`;
+  if (!vis.length) { $('invTabela').innerHTML = '<div class="vazio">Nenhum ciclo enviado pela Amostragem ainda.</div>'; return; }
+  $('invTabela').innerHTML = `<table><thead><tr><th>Data</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Armazém</th>
+    <th class="n">Saldo em Estoque</th><th class="n">Valor Unitário (R$)</th><th class="n">Valor Total (R$)</th><th>Situação do ciclo</th></tr></thead><tbody>
+    ${vis.map(l => `<tr><td>${fD(l.c.data_ref)}</td><td>${esc(l.i.codigo)}</td><td class="desc">${esc(l.i.descricao)}</td><td>${esc(l.i.unidade)}</td><td>${esc(l.i.armazem)}</td>
+      <td class="n">${fN(l.saldo)}</td><td class="n">${fR(l.vu)}</td><td class="n">${fR(l.vt)}</td><td><span class="tag t-${l.c.status}">${STATUS_CICLO[l.c.status]}</span></td></tr>`).join('')}</tbody></table>`;
+}
+$('invExport').onclick = async () => exportar('Inventario', (await linhasInventario()).map(l => ({ 'Data': fD(l.c.data_ref), 'Código': l.i.codigo, 'Descrição': l.i.descricao,
+  'Unidade': l.i.unidade, 'Armazém': l.i.armazem, 'Saldo em Estoque': l.saldo, 'Valor Unitário (R$)': l.vu, 'Valor Total (R$)': l.vt })));
+
+/* =====================================================================
+   DADOS INVENTÁRIO
+   ===================================================================== */
+async function telaDadosInv() {
+  const lista = ciclos.filter(c => c.status !== 'conferencia');
+  preencherSelect($('diCiclo'), lista, cicloSelecionado || (lista.find(c => c.status === 'correcao') || {}).id, 'Nenhum ciclo enviado pela Amostragem');
+  await desenharDadosInv();
+}
+$('diCiclo').onchange = () => { cicloSelecionado = $('diCiclo').value; abrirAba('dadosinv'); };
+$('diBusca').oninput = () => desenharDadosInv();
+$('diFiltro').onchange = () => desenharDadosInv();
+async function desenharDadosInv() {
+  const c = cicloPorId($('diCiclo').value);
+  const itens = c ? await itensDoCiclo(c.id) : [];
+  const editavel = c && c.status === 'correcao';
+  $('diStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
+  $('diFechar').classList.toggle('hide', !editavel); $('diVoltar').classList.toggle('hide', !editavel);
+  $('diReabrir').classList.toggle('hide', !(c && c.status === 'fechado')); $('diExport').disabled = !c;
+  const cont = a => itens.filter(i => (i.ajuste || i.tipo) === a).length;
+  const impacto = itens.reduce((s, i) => s + (num(i.divergencia) || 0) * (num(i.valor_unit) || 0), 0);
+  $('diChips').innerHTML = c ? `
+    <div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
+    <div class="chip"><small>Divergentes</small><b>${fN(itens.filter(i => i.status === 'Divergente').length)}</b></div>
+    ${AJUSTES.map(a => `<div class="chip"><small>${a}</small><b>${fN(cont(a))}</b></div>`).join('')}
+    <div class="chip"><small>Impacto líquido</small><b class="${impacto < 0 ? 'neg' : 'pos'}">${fR(impacto)}</b></div>` : '';
+  let lista = filtraBusca(itens, $('diBusca').value);
+  const f = $('diFiltro').value;
+  if (f === 'div') lista = lista.filter(i => i.status === 'Divergente');
+  else if (f) lista = lista.filter(i => (i.ajuste || i.tipo) === f);
+  if (!c) { $('diTabela').innerHTML = '<div class="vazio">Envie uma conferência pela Amostragem.</div>'; return; }
+  if (!lista.length) { $('diTabela').innerHTML = '<div class="vazio">Nenhum item neste filtro.</div>'; return; }
+  $('diTabela').innerHTML = `<table><thead><tr><th>Código</th><th>Descrição</th><th>Unidade</th><th class="n">Saldo em Estoque</th><th class="n">Conferência</th>
+    <th class="n">Retirada/Inclusão</th><th>Status</th><th>Ajuste</th><th class="n">Saldo ajustado</th><th>Observação</th><th class="n">Valor Unitário</th><th class="n">Impacto (R$)</th></tr></thead>
+    <tbody>${lista.map(i => linhaDI(i, editavel)).join('')}</tbody></table>`;
+}
+function linhaDI(i, ed) {
+  const imp = i.divergencia == null || i.valor_unit == null ? null : num(i.divergencia) * num(i.valor_unit);
+  const aj = i.ajuste || i.tipo;
+  const avisoAj = i.status === 'Divergente' && aj === 'Certo' ? ' title="Item com diferença classificado como Certo"' : '';
+  return `<tr data-id="${i.id}"><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td>${esc(i.unidade)}</td>
+    <td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(i.conferido)}</td><td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.tipo)}</td>
+    <td${avisoAj}>${ed ? `<select class="diAj" data-id="${i.id}"><option value=""></option>${AJUSTES.map(a => `<option ${a === aj ? 'selected' : ''}>${a}</option>`).join('')}</select>` : tag(aj)}</td>
+    <td class="n">${ed ? `<input class="diSaldo" inputmode="decimal" data-id="${i.id}" value="${i.saldo_ajustado ?? ''}">` : fN(i.saldo_ajustado)}</td>
+    <td>${ed ? `<input class="diObs txt" data-id="${i.id}" value="${esc(i.observacao ?? '')}">` : esc(i.observacao)}</td>
+    <td class="n">${fR(num(i.valor_unit))}</td><td class="n ${imp < 0 ? 'neg' : imp > 0 ? 'pos' : ''}">${fR(imp)}</td></tr>`;
+}
+$('diTabela').addEventListener('change', async e => {
+  const el = e.target; const id = Number(el.dataset.id); if (!id) return;
+  let campo = {};
+  if (el.classList.contains('diAj')) campo = { ajuste: el.value || null };
+  else if (el.classList.contains('diSaldo')) { const v = paraNumero(el.value); if (el.value.trim() !== '' && v === null) return toast('Valor inválido.', true); campo = { saldo_ajustado: v }; }
+  else if (el.classList.contains('diObs')) campo = { observacao: el.value.trim() || null };
+  else return;
+  try {
+    const novo = await ok(sb.from('itens').update(campo).eq('id', id).select().single());
+    const lista = cache[novo.ciclo_id]; lista[lista.findIndex(x => x.id === id)] = novo;
+    const tr = el.closest('tr'); tr.classList.remove('salvo'); void tr.offsetWidth; tr.classList.add('salvo');
+  } catch (err) { falha(err); }
+});
+$('diFechar').onclick = async () => {
+  const c = cicloPorId($('diCiclo').value); if (!c) return;
+  const itens = await itensDoCiclo(c.id);
+  const semAj = itens.filter(i => i.status === 'Divergente' && !i.ajuste).length;
+  if (semAj && !confirm(`${semAj} divergência(s) estão sem Ajuste. Fechar mesmo assim?`)) return;
+  if (!confirm('Fechar o ciclo? O saldo ajustado passará a valer na tela Estoque.')) return;
+  try { carregando(true); await ok(sb.rpc('fechar_ciclo', { p_ciclo: c.id })); await carregarCiclos(); toast('Ciclo fechado. Estoque atualizado.'); abrirAba('estoque'); }
+  catch (e) { falha(e); carregando(false); }
+};
+async function reabrir(para, msg) {
+  const c = cicloPorId($('diCiclo').value); if (!c || !confirm(msg)) return;
+  try { carregando(true); await ok(sb.rpc('reabrir_ciclo', { p_ciclo: c.id, p_para: para })); await carregarCiclos(); cicloSelecionado = c.id; abrirAba(para === 'conferencia' ? 'amostragem' : 'dadosinv'); }
+  catch (e) { falha(e); carregando(false); }
+}
+$('diVoltar').onclick = () => reabrir('conferencia', 'Voltar este ciclo para a Amostragem para corrigir contagens?');
+$('diReabrir').onclick = () => reabrir('correcao', 'Reabrir a correção deste ciclo? Ele deixa de valer no Estoque até ser fechado de novo.');
+$('diExport').onclick = async () => {
+  const c = cicloPorId($('diCiclo').value); if (!c) return;
+  exportar(`Dados_Inventario_${c.data_ref}`, (await itensDoCiclo(c.id)).map(i => ({ 'Data': fD(c.data_ref), 'Código': i.codigo, 'Descrição': i.descricao, 'Unidade': i.unidade, 'Armazém': i.armazem,
+    'Saldo em Estoque': num(i.saldo_sistema), 'Conferência': num(i.conferido), 'Retirada/Inclusão': num(i.divergencia), 'Status': i.tipo, 'Ajuste': i.ajuste || i.tipo,
+    'Saldo ajustado': num(i.saldo_ajustado), 'Observação': i.observacao, 'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total),
+    'Conferido por': i.conferido_por, 'Ajustado por': i.ajustado_por })));
+};
+
+/* =====================================================================
+   ESTOQUE
+   ===================================================================== */
+let estoque = [];
+async function telaEstoque() {
+  estoque = await buscarTudo(() => sb.from('estoque_atual').select('*').order('descricao').order('codigo'));
+  const datas = [...new Set(estoque.map(e => e.data_ref))].sort().reverse();
+  const sel = $('estData'); const atual = sel.value;
+  sel.innerHTML = `<option value="">Todos os itens (última contagem de cada)</option>` + datas.map(d => `<option value="${d}">Somente itens contados em ${fD(d)}</option>`).join('');
+  sel.value = datas.includes(atual) ? atual : '';
+  desenharEstoque();
+}
+$('estBusca').oninput = () => desenharEstoque();
+$('estData').onchange = () => desenharEstoque();
+const listaEstoque = () => filtraBusca(estoque, $('estBusca').value).filter(e => !$('estData').value || e.data_ref === $('estData').value);
+function desenharEstoque() {
+  const lista = listaEstoque();
+  const datas = [...new Set(estoque.map(e => e.data_ref))].sort();
+  $('estChips').innerHTML = `<div class="chip"><small>Itens</small><b>${fN(lista.length)}</b></div>
+    <div class="chip"><small>Valor total</small><b>${fR(lista.reduce((s, e) => s + (num(e.valor_total) || 0), 0))}</b></div>
+    <div class="chip"><small>Último ciclo fechado</small><b>${datas.length ? fD(datas[datas.length - 1]) : '–'}</b></div>`;
+  if (!lista.length) { $('estTabela').innerHTML = '<div class="vazio">O estoque aparece aqui depois que um ciclo é fechado em Dados Inventário.</div>'; return; }
+  $('estTabela').innerHTML = `<table><thead><tr><th>Data / Mês</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Armazém</th><th class="n">Saldo em Estoque</th>
+    <th class="n">Valor Unitário (R$)</th><th class="n">Valor Total (R$)</th><th>Situação</th></tr></thead><tbody>
+    ${lista.map(e => `<tr><td>${fD(e.data_ref)}</td><td>${esc(e.codigo)}</td><td class="desc">${esc(e.descricao)}</td><td>${esc(e.unidade)}</td><td>${esc(e.armazem)}</td>
+      <td class="n">${fN(num(e.saldo))}</td><td class="n">${fR(num(e.valor_unit))}</td><td class="n">${fR(num(e.valor_total))}</td><td>${tag(e.situacao)}</td></tr>`).join('')}</tbody></table>`;
+}
+$('estExport').onclick = () => exportar('Estoque', listaEstoque().map(e => ({ 'Data / Mês': fD(e.data_ref), 'Código': e.codigo, 'Descrição': e.descricao,
+  'Unidade': e.unidade, 'Armazém': e.armazem, 'Saldo em Estoque': num(e.saldo), 'Valor Unitário (R$)': num(e.valor_unit), 'Valor Total (R$)': num(e.valor_total), 'Situação': e.situacao })));
+
+/* =====================================================================
+   DADOS ESTOQUE HOJE  (isolado)
+   ===================================================================== */
+let hoje = [];
+async function telaHoje() {
+  const datas = [...new Set((await buscarTudo(() => sb.from('estoque_hoje').select('data_ref').order('data_ref', { ascending: false }))).map(d => d.data_ref))];
+  const sel = $('hojeData'); const atual = sel.value;
+  sel.innerHTML = datas.length ? datas.map(d => `<option value="${d}">Dados de ${fD(d)}</option>`).join('') : '<option value="">Nenhuma importação</option>';
+  sel.value = datas.includes(atual) ? atual : (datas[0] || '');
+  hoje = sel.value ? await buscarTudo(() => sb.from('estoque_hoje').select('*').eq('data_ref', sel.value).order('descricao').order('id')) : [];
+  $('hojeExcluir').disabled = !sel.value;
+  desenharHoje();
+}
+$('hojeData').onchange = () => abrirAba('hoje');
+$('hojeBusca').oninput = () => desenharHoje();
+function desenharHoje() {
+  const lista = filtraBusca(hoje, $('hojeBusca').value);
+  $('hojeChips').innerHTML = `<div class="chip"><small>Itens</small><b>${fN(lista.length)}</b></div>
+    <div class="chip"><small>Valor em estoque</small><b>${fR(lista.reduce((s, e) => s + (num(e.valor_total) || 0), 0))}</b></div>`;
+  if (!lista.length) { $('hojeTabela').innerHTML = '<div class="vazio">Clique em "Anexar Excel" para carregar os dados do sistema.</div>'; return; }
+  $('hojeTabela').innerHTML = `<table><thead><tr><th>Código</th><th>Descrição</th><th>U.M.</th><th>Armz</th><th class="n">Saldo em Estoque</th><th class="n">Valor em Estoque</th><th>Data</th></tr></thead><tbody>
+    ${lista.map(e => `<tr><td>${esc(e.codigo)}</td><td class="desc">${esc(e.descricao)}</td><td>${esc(e.unidade)}</td><td>${esc(e.armazem)}</td>
+      <td class="n">${fN(num(e.saldo))}</td><td class="n">${fR(num(e.valor_total))}</td><td>${fD(e.data_ref)}</td></tr>`).join('')}</tbody></table>`;
+}
+let lidoHoje = null;
+$('hojeImportar').onclick = () => {
+  lidoHoje = null; $('hArquivo').value = ''; $('hData').value = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);
+  $('hPrevia').classList.add('hide'); $('hOk').disabled = true; $('mHoje').classList.remove('hide');
+};
+$('hCancelar').onclick = () => $('mHoje').classList.add('hide');
+$('hArquivo').onchange = async () => {
+  const f = $('hArquivo').files[0]; if (!f) return;
+  try {
+    carregando(true); lidoHoje = await lerExcel(f);
+    const datas = [...new Set(lidoHoje.itens.map(i => i.data).filter(Boolean))].sort();
+    $('hPrevia').textContent = `${lidoHoje.itens.length} linhas encontradas.` + (datas.length ? `\nDatas na planilha: ${datas.map(fD).join(', ')}` : '\nSem coluna Data: será usada a data acima.');
+    $('hPrevia').classList.remove('hide'); $('hOk').disabled = !lidoHoje.itens.length;
+  } catch (e) { falha(e); } finally { carregando(false); }
+};
+$('hOk').onclick = async () => {
+  if (!lidoHoje) return;
+  try {
+    carregando(true);
+    const linhas = lidoHoje.itens.map(i => ({ data_ref: i.data || $('hData').value, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, armazem: i.armazem, saldo: i.saldo, valor_total: i.valor_total }));
+    if (linhas.some(l => !l.data_ref)) throw new Error('Informe a data dos dados.');
+    await inserirEmLotes('estoque_hoje', linhas);
+    $('mHoje').classList.add('hide'); toast(`${linhas.length} linhas importadas.`);
+    $('hojeData').value = ''; abrirAba('hoje');
+  } catch (e) { falha(e); carregando(false); }
+};
+$('hojeExcluir').onclick = async () => {
+  const d = $('hojeData').value; if (!d || !confirm(`Excluir os dados importados de ${fD(d)}?`)) return;
+  try { carregando(true); await ok(sb.from('estoque_hoje').delete().eq('data_ref', d)); $('hojeData').value = ''; toast('Importação excluída.'); abrirAba('hoje'); }
+  catch (e) { falha(e); carregando(false); }
+};
+$('hojeExport').onclick = () => exportar('Dados_Estoque_Hoje', filtraBusca(hoje, $('hojeBusca').value).map(e => ({ 'CODIGO': e.codigo, 'DESCRICAO': e.descricao, 'U.M.': e.unidade,
+  'ARMZ': e.armazem, 'SALDO EM ESTOQUE': num(e.saldo), 'VALOR EM ESTOQUE': num(e.valor_total), 'DATA': fD(e.data_ref) })));
+
+/* =====================================================================
+   DASHBOARD
+   ===================================================================== */
+let resumo = [];
+const CORES = { 'Certo': '#1E7B4A', 'Baixa': '#B42318', 'Baixa 24 Horas': '#D08A00', 'Falha Protheus': '#5B3FA8' };
+function grafico(id, cfg) { if (graficos[id]) graficos[id].destroy(); graficos[id] = new Chart($(id), cfg); }
+async function telaDashboard() {
+  resumo = (await ok(sb.from('resumo_ciclos').select('*').order('data_ref'))).filter(r => r.conferidos > 0);
+  const lista = resumo.slice().reverse().map(r => cicloPorId(r.id)).filter(Boolean);
+  preencherSelect($('dashCiclo'), lista, cicloSelecionado, 'Sem ciclos conferidos');
+  await desenharDashboard();
+}
+$('dashCiclo').onchange = () => { cicloSelecionado = $('dashCiclo').value; desenharDashboard(); };
+async function desenharDashboard() {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
+  if (!r) { $('dashKpis').innerHTML = '<div class="vazio">Ainda não há ciclos conferidos.</div>'; $('dashAviso').innerHTML = ''; return; }
+  const acur = r.corretos / r.conferidos;
+  $('dashAviso').innerHTML = r.final_certo > r.corretos
+    ? `<div class="aviso">Atenção: ${r.final_certo - r.corretos} item(ns) com diferença na contagem foram classificados como "Certo" no Ajuste. A contagem bateu em ${fP(acur)} dos itens; a classificação final mostra ${fP(r.final_certo / r.itens)}.</div>` : '';
+  $('dashKpis').innerHTML = `
+    <div class="kpi"><small>Itens conferidos</small><b>${fN(r.conferidos)}</b><span>de ${fN(r.itens)} no ciclo</span></div>
+    <div class="kpi"><small>Acurácia da contagem</small><b>${fP(acur)}</b><span>${fN(r.corretos)} itens bateram</span></div>
+    <div class="kpi"><small>Divergências</small><b style="color:var(--verm)">${fN(r.divergentes)}</b><span>${fP(r.divergentes / r.conferidos)} dos conferidos</span></div>
+    <div class="kpi"><small>Valor em estoque (sistema)</small><b>${fR(num(r.valor_sistema))}</b></div>
+    <div class="kpi"><small>Faltas (Baixa)</small><b class="neg">${fR(num(r.impacto_faltas))}</b></div>
+    <div class="kpi"><small>Sobras (Falha Protheus)</small><b class="pos">${fR(num(r.impacto_sobras))}</b></div>
+    <div class="kpi"><small>Impacto líquido</small><b class="${r.impacto_liquido < 0 ? 'neg' : 'pos'}">${fR(num(r.impacto_liquido))}</b></div>`;
+  const vals = [r.final_certo, r.final_baixa, r.final_baixa24, r.final_falha];
+  grafico('gClass', { type: 'doughnut', data: { labels: AJUSTES, datasets: [{ data: vals, backgroundColor: AJUSTES.map(a => CORES[a]) }] },
+    options: { plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: x => `${x.label}: ${x.raw} (${fP(x.raw / r.itens)})` } } } } });
+  const rot = resumo.map(x => fD(x.data_ref));
+  grafico('gAcur', { type: 'line', data: { labels: rot, datasets: [{ label: 'Acurácia da contagem', data: resumo.map(x => +(100 * x.corretos / x.conferidos).toFixed(1)), borderColor: '#1F4E78', backgroundColor: '#1F4E78', tension: .2 }] },
+    options: { scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } }, plugins: { legend: { display: false } } } });
+  grafico('gComp', { type: 'bar', data: { labels: rot, datasets: AJUSTES.map((a, k) => ({ label: a, backgroundColor: CORES[a],
+    data: resumo.map(x => [x.final_certo, x.final_baixa, x.final_baixa24, x.final_falha][k]) })) }, options: { scales: { x: { stacked: true }, y: { stacked: true } } } });
+  grafico('gImp', { type: 'bar', data: { labels: rot, datasets: [
+    { label: 'Faltas', backgroundColor: CORES['Baixa'], data: resumo.map(x => num(x.impacto_faltas)) },
+    { label: 'Sobras', backgroundColor: CORES['Falha Protheus'], data: resumo.map(x => num(x.impacto_sobras)) }] },
+    options: { scales: { y: { ticks: { callback: v => rf.format(v) } } } } });
+  $('dashTabela').innerHTML = `<table><thead><tr><th>Mês conferência</th><th class="n">Itens conferidos</th><th class="n">Itens corretos</th><th class="n">Divergências</th>
+    <th class="n">Baixas</th><th class="n">Baixas 24 horas</th><th class="n">Falha Protheus</th><th class="n">% corretos</th><th class="n">Faltas (R$)</th><th class="n">Sobras (R$)</th></tr></thead><tbody>
+    ${resumo.map(x => `<tr><td>${fD(x.data_ref)}</td><td class="n">${fN(x.conferidos)}</td><td class="n">${fN(x.corretos)}</td><td class="n">${fN(x.divergentes)}</td>
+      <td class="n">${fN(x.final_baixa)}</td><td class="n">${fN(x.final_baixa24)}</td><td class="n">${fN(x.final_falha)}</td><td class="n">${fP(x.corretos / x.conferidos)}</td>
+      <td class="n neg">${fR(num(x.impacto_faltas))}</td><td class="n pos">${fR(num(x.impacto_sobras))}</td></tr>`).join('')}</tbody></table>`;
+  const itens = await itensDoCiclo(r.id);
+  const top = itens.filter(i => i.divergencia && i.valor_unit != null).map(i => ({ i, imp: num(i.divergencia) * num(i.valor_unit) }))
+    .sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
+  $('dashTop').innerHTML = top.length ? `<table><thead><tr><th>Código</th><th>Descrição</th><th class="n">Saldo</th><th class="n">Contado</th><th class="n">Diferença</th><th>Ajuste</th><th class="n">Impacto (R$)</th></tr></thead><tbody>
+    ${top.map(({ i, imp }) => `<tr><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(i.conferido)}</td>
+      <td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.ajuste || i.tipo)}</td><td class="n ${imp < 0 ? 'neg' : 'pos'}">${fR(imp)}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio">Sem divergências.</div>';
+}
+$('dashExport').onclick = () => exportar('Dashboard_Comparativo', resumo.map(x => ({ 'Mês conferência': fD(x.data_ref), 'Itens conferidos': x.conferidos, 'Itens corretos': x.corretos,
+  'Divergências': x.divergentes, 'Final - Certo': x.final_certo, 'Baixas': x.final_baixa, 'Baixas 24 horas': x.final_baixa24, 'Falha Protheus': x.final_falha,
+  '% corretos': x.conferidos ? x.corretos / x.conferidos : null, 'Valor em estoque (R$)': num(x.valor_sistema), 'Faltas (R$)': num(x.impacto_faltas),
+  'Sobras (R$)': num(x.impacto_sobras), 'Impacto líquido (R$)': num(x.impacto_liquido) })));
+
+iniciar();
+</script>
+</body>
+</html>
