@@ -66,6 +66,11 @@
   .t-conferencia{background:var(--amarBg);color:var(--amar)}
   .t-correcao{background:var(--roxoBg);color:var(--roxo)}
   .t-fechado{background:var(--verdeBg);color:var(--verde)}
+  .ciclosPainel{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .pillCiclo{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:8px 12px;border-radius:8px;background:#fff;min-width:150px;text-align:left}
+  .pillCiclo b{font-size:15px}
+  .pillCiclo.sel{border:2px solid var(--azul);padding:7px 11px}
+  .pillCiclo.pend{background:#FFFBEB}
   .neg{color:var(--verm)} .pos{color:var(--roxo)}
   .salvo{animation:pisca 1s}
   @keyframes pisca{from{background:#D8F0E1}to{background:transparent}}
@@ -182,6 +187,7 @@
 
     <!-- DADOS INVENTÁRIO -->
     <section id="aba-dadosinv" class="hide">
+      <div class="ciclosPainel" id="diPainel"></div>
       <div class="barra">
         <select id="diCiclo" aria-label="Ciclo"></select>
         <span id="diStatus"></span>
@@ -316,7 +322,9 @@ const SUPABASE_KEY = 'sb_publishable_PH1bNp4yYvhxJaO_YLDIiQ_CoN2o2sC';
 /* ===================================================================== */
 const $ = id => document.getElementById(id);
 const AJUSTES = ['Certo', 'Baixa', 'Baixa 24 Horas', 'Falha Protheus'];
-const STATUS_CICLO = { conferencia: 'Em conferência', correcao: 'Em correção', fechado: 'Fechado' };
+const STATUS_CICLO = { conferencia: 'Pendente – contagem', correcao: 'Pendente – correção', fechado: 'Finalizado' };
+const NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const mesCiclo = c => `${NOMES_MES[+c.data_ref.slice(5, 7) - 1]}/${c.data_ref.slice(0, 4)}`;
 let sb = null, ciclos = [], usuarioEmail = '';
 const cache = {};          // itens por ciclo
 const graficos = {};
@@ -334,7 +342,7 @@ const num = v => v === null || v === undefined || v === '' ? null : Number(v);
 const classeTag = t => ({ 'Baixa 24 Horas': 'Baixa24', 'Falha Protheus': 'Falha' }[t] || t);
 const tag = t => t ? `<span class="tag t-${classeTag(t)}">${esc(t)}</span>` : '';
 const sinal = v => v === null || v === undefined ? '' : `<span class="${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${v > 0 ? '+' : ''}${fN(v)}</span>`;
-const nomeCiclo = c => `${fD(c.data_ref)}${c.descricao ? ' · ' + c.descricao : ''} — ${STATUS_CICLO[c.status]}`;
+const nomeCiclo = c => `${mesCiclo(c)} (${fD(c.data_ref)}) — ${STATUS_CICLO[c.status]}`;
 
 function toast(msg, erro = false) {
   const t = $('toast'); t.textContent = msg; t.className = erro ? 'erroT' : '';
@@ -841,18 +849,34 @@ $('invExport').onclick = async () => exportar('Inventario', (await linhasInventa
    DADOS INVENTÁRIO
    ===================================================================== */
 async function telaDadosInv() {
-  const lista = ciclos.filter(c => c.status !== 'conferencia');
-  preencherSelect($('diCiclo'), lista, cicloSelecionado || (lista.find(c => c.status === 'correcao') || {}).id, 'Nenhum ciclo enviado pela Amostragem');
+  const pend = ciclos.find(c => c.status === 'correcao') || ciclos.find(c => c.status === 'conferencia');
+  preencherSelect($('diCiclo'), ciclos, cicloSelecionado || (pend || {}).id, 'Nenhum ciclo cadastrado');
   await desenharDadosInv();
 }
 $('diCiclo').onchange = () => { cicloSelecionado = $('diCiclo').value; abrirAba('dadosinv'); };
 $('diBusca').oninput = () => desenharDadosInv();
 $('diFiltro').onchange = () => desenharDadosInv();
+$('diPainel').addEventListener('click', e => { const b = e.target.closest('.pillCiclo'); if (!b) return; cicloSelecionado = b.dataset.id; abrirAba('dadosinv'); });
 async function desenharDadosInv() {
   const c = cicloPorId($('diCiclo').value);
+  $('diPainel').innerHTML = ciclos.slice().sort((a, b) => a.data_ref.localeCompare(b.data_ref)).map(x =>
+    `<button class="pillCiclo ${x.status !== 'fechado' ? 'pend' : ''} ${c && x.id === c.id ? 'sel' : ''}" data-id="${x.id}">
+      <b>${mesCiclo(x)}</b><span class="tag t-${x.status}">${x.status === 'fechado' ? '✔ ' : '⏳ '}${STATUS_CICLO[x.status]}</span></button>`).join('');
   const itens = c ? await itensDoCiclo(c.id) : [];
   const editavel = c && c.status === 'correcao';
-  $('diStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
+  $('diStatus').innerHTML = c ? `<b style="font-size:16px">${mesCiclo(c)}</b> <span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
+  $('diFiltro').disabled = $('diBusca').disabled = !!(c && c.status === 'conferencia');
+  if (c && c.status === 'conferencia') {
+    const conf = itens.filter(i => i.conferido !== null).length;
+    ['diFechar', 'diVoltar', 'diReabrir'].forEach(id => $(id).classList.add('hide'));
+    $('diChips').innerHTML = `<div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
+      <div class="chip"><small>Conferidos</small><b>${fN(conf)}</b></div><div class="chip"><small>Pendentes de contagem</small><b>${fN(itens.length - conf)}</b></div>`;
+    $('diTabela').innerHTML = `<div class="vazio"><b>${mesCiclo(c)} está pendente de correção.</b><br>A contagem ainda está na Amostragem (${fN(conf)} de ${fN(itens.length)} itens conferidos).<br>
+      Quando terminar a contagem, clique em <b>"Enviar para Inventário"</b> na Amostragem; os itens aparecem aqui para classificar Baixa, Baixa 24 Horas e Falha Protheus.<br><br>
+      <button class="pri" id="diIrAmostragem">Ir para a Amostragem de ${mesCiclo(c)}</button></div>`;
+    $('diIrAmostragem').onclick = () => { cicloSelecionado = c.id; abrirAba('amostragem'); };
+    return;
+  }
   $('diFechar').classList.toggle('hide', !editavel); $('diVoltar').classList.toggle('hide', !editavel);
   $('diReabrir').classList.toggle('hide', !(c && c.status === 'fechado')); $('diExport').disabled = !c;
   const cont = a => itens.filter(i => (i.ajuste || i.tipo) === a).length;
