@@ -232,18 +232,18 @@
         <span class="esp"></span>
         <button id="dashExport">Exportar comparativo</button>
       </div>
-      <div id="dashAviso"></div>
       <div class="kpis" id="dashKpis"></div>
       <div class="grade">
-        <div class="painel"><h3>Classificação final do ciclo</h3><canvas id="gClass"></canvas></div>
-        <div class="painel"><h3>Acurácia da contagem por ciclo</h3><canvas id="gAcur"></canvas></div>
+        <div class="painel"><h3>Resultado consolidado da classificação de itens</h3><canvas id="gClass"></canvas></div>
+        <div class="painel"><h3>Distribuição por classificação</h3><div class="tabela" id="dashDist" style="max-height:none"></div></div>
       </div>
       <div class="grade">
-        <div class="painel"><h3>Comparativo por ciclo</h3><canvas id="gComp"></canvas></div>
-        <div class="painel"><h3>Impacto financeiro por ciclo (R$)</h3><canvas id="gImp"></canvas></div>
+        <div class="painel"><h3>Distribuição percentual – acuracidade e pontos de alerta</h3><canvas id="gPct"></canvas></div>
+        <div class="painel"><h3>Acuracidade por ciclo (% de itens Certo)</h3><canvas id="gAcur"></canvas></div>
       </div>
-      <div class="painel" style="margin-bottom:12px"><h3>Comparativo geral</h3><div class="tabela" id="dashTabela" style="max-height:none"></div></div>
-      <div class="painel"><h3>10 maiores divergências do ciclo (R$)</h3><div class="tabela" id="dashTop" style="max-height:none"></div></div>
+      <div class="painel" style="margin-bottom:12px"><h3>Comparativo geral por ciclo</h3><div class="tabela" id="dashTabela" style="max-height:none"></div></div>
+      <div class="painel" style="margin-bottom:12px"><h3>Classificação por ciclo</h3><canvas id="gComp"></canvas></div>
+      <div class="painel"><h3>10 maiores ajustes do ciclo (R$)</h3><div class="tabela" id="dashTop" style="max-height:none"></div></div>
     </section>
   </main>
 </div>
@@ -303,7 +303,7 @@ const graficos = {};
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 const rf = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
-const pf = new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const pf = new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fN = v => v === null || v === undefined || v === '' ? '' : nf.format(v);
 const fR = v => v === null || v === undefined || v === '' || isNaN(v) ? '' : rf.format(v);
 const fP = v => v === null || v === undefined || !isFinite(v) ? '–' : pf.format(v);
@@ -751,7 +751,7 @@ function linhaDI(i, ed) {
   const avisoAj = i.status === 'Divergente' && aj === 'Certo' ? ' title="Item com diferença classificado como Certo"' : '';
   return `<tr data-id="${i.id}"><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td>${esc(i.unidade)}</td>
     <td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(i.conferido)}</td><td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.tipo)}</td>
-    <td${avisoAj}>${ed ? `<select class="diAj" data-id="${i.id}"><option value=""></option>${AJUSTES.map(a => `<option ${a === aj ? 'selected' : ''}>${a}</option>`).join('')}</select>` : tag(aj)}</td>
+    <td${avisoAj}>${ed ? `<select class="diAj" data-id="${i.id}"><option value=""></option>${AJUSTES.map(a => `<option ${a === i.ajuste ? 'selected' : ''}>${a}</option>`).join('')}</select>` : tag(aj)}</td>
     <td class="n">${ed ? `<input class="diSaldo" inputmode="decimal" data-id="${i.id}" value="${i.saldo_ajustado ?? ''}">` : fN(i.saldo_ajustado)}</td>
     <td>${ed ? `<input class="diObs txt" data-id="${i.id}" value="${esc(i.observacao ?? '')}">` : esc(i.observacao)}</td>
     <td class="n">${fR(num(i.valor_unit))}</td><td class="n ${imp < 0 ? 'neg' : imp > 0 ? 'pos' : ''}">${fR(imp)}</td></tr>`;
@@ -772,9 +772,9 @@ $('diTabela').addEventListener('change', async e => {
 $('diFechar').onclick = async () => {
   const c = cicloPorId($('diCiclo').value); if (!c) return;
   const itens = await itensDoCiclo(c.id);
-  const semAj = itens.filter(i => i.status === 'Divergente' && !i.ajuste).length;
-  if (semAj && !confirm(`${semAj} divergência(s) estão sem Ajuste. Fechar mesmo assim?`)) return;
-  if (!confirm('Fechar o ciclo? O saldo ajustado passará a valer na tela Estoque.')) return;
+  const semAj = itens.filter(i => i.conferido !== null && !i.ajuste).length;
+  if (semAj) { $('diFiltro').value = ''; desenharDadosInv(); return toast(`${semAj} item(ns) conferido(s) sem Ajuste. Preencha o Ajuste antes de fechar.`, true); }
+  if (!confirm('Fechar o ciclo? Os dados ajustados passam a valer no Estoque e no Dashboard.')) return;
   try { carregando(true); await ok(sb.rpc('fechar_ciclo', { p_ciclo: c.id })); await carregarCiclos(); toast('Ciclo fechado. Estoque atualizado.'); abrirAba('estoque'); }
   catch (e) { falha(e); carregando(false); }
 };
@@ -888,54 +888,68 @@ let resumo = [];
 const CORES = { 'Certo': '#1E7B4A', 'Baixa': '#B42318', 'Baixa 24 Horas': '#D08A00', 'Falha Protheus': '#5B3FA8' };
 function grafico(id, cfg) { if (graficos[id]) graficos[id].destroy(); graficos[id] = new Chart($(id), cfg); }
 async function telaDashboard() {
-  resumo = (await ok(sb.from('resumo_ciclos').select('*').order('data_ref'))).filter(r => r.conferidos > 0);
+  // Só entram ciclos FECHADOS: dados depois dos ajustes em Dados Inventário (o dado inicial é só base)
+  resumo = (await ok(sb.from('resumo_ciclos').select('*').order('data_ref'))).filter(r => r.status === 'fechado');
   const lista = resumo.slice().reverse().map(r => cicloPorId(r.id)).filter(Boolean);
-  preencherSelect($('dashCiclo'), lista, cicloSelecionado, 'Sem ciclos conferidos');
+  preencherSelect($('dashCiclo'), lista, cicloSelecionado, 'Nenhum ciclo fechado');
   await desenharDashboard();
 }
 $('dashCiclo').onchange = () => { cicloSelecionado = $('dashCiclo').value; desenharDashboard(); };
+// Acuracidade = itens classificados como "Certo" ÷ total de itens classificados (mesma regra das apresentações)
+const totaisCiclo = x => {
+  const q = { 'Certo': +x.final_certo, 'Baixa': +x.final_baixa, 'Baixa 24 Horas': +x.final_baixa24, 'Falha Protheus': +x.final_falha };
+  const total = q['Certo'] + q['Baixa'] + q['Baixa 24 Horas'] + q['Falha Protheus'];
+  return { q, total, acur: total ? q['Certo'] / total : null, desvios: total - q['Certo'] };
+};
 async function desenharDashboard() {
   const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
-  if (!r) { $('dashKpis').innerHTML = '<div class="vazio">Ainda não há ciclos conferidos.</div>'; $('dashAviso').innerHTML = ''; return; }
-  const acur = r.corretos / r.conferidos;
-  $('dashAviso').innerHTML = r.final_certo > r.corretos
-    ? `<div class="aviso">Atenção: ${r.final_certo - r.corretos} item(ns) com diferença na contagem foram classificados como "Certo" no Ajuste. A contagem bateu em ${fP(acur)} dos itens; a classificação final mostra ${fP(r.final_certo / r.itens)}.</div>` : '';
+  if (!r) { $('dashKpis').innerHTML = '<div class="vazio">O Dashboard mostra somente ciclos fechados, depois dos ajustes em Dados Inventário.</div>'; return; }
+  const t = totaisCiclo(r), pc = a => t.total ? t.q[a] / t.total : null;
+  const k = resumo.indexOf(r), ant = k > 0 ? totaisCiclo(resumo[k - 1]) : null;
+  const varAcur = ant && ant.acur != null ? (t.acur - ant.acur) * 100 : null;
+  const txtVar = varAcur == null ? 'itens classificados como Certo'
+    : `${varAcur >= 0 ? '▲ +' : '▼ '}${nf.format(+varAcur.toFixed(2))} p.p. vs ciclo anterior`;
   $('dashKpis').innerHTML = `
-    <div class="kpi"><small>Itens conferidos</small><b>${fN(r.conferidos)}</b><span>de ${fN(r.itens)} no ciclo</span></div>
-    <div class="kpi"><small>Acurácia da contagem</small><b>${fP(acur)}</b><span>${fN(r.corretos)} itens bateram</span></div>
-    <div class="kpi"><small>Divergências</small><b style="color:var(--verm)">${fN(r.divergentes)}</b><span>${fP(r.divergentes / r.conferidos)} dos conferidos</span></div>
-    <div class="kpi"><small>Valor em estoque (sistema)</small><b>${fR(num(r.valor_sistema))}</b></div>
-    <div class="kpi"><small>Faltas (Baixa)</small><b class="neg">${fR(num(r.impacto_faltas))}</b></div>
-    <div class="kpi"><small>Sobras (Falha Protheus)</small><b class="pos">${fR(num(r.impacto_sobras))}</b></div>
-    <div class="kpi"><small>Impacto líquido</small><b class="${r.impacto_liquido < 0 ? 'neg' : 'pos'}">${fR(num(r.impacto_liquido))}</b></div>`;
-  const vals = [r.final_certo, r.final_baixa, r.final_baixa24, r.final_falha];
-  grafico('gClass', { type: 'doughnut', data: { labels: AJUSTES, datasets: [{ data: vals, backgroundColor: AJUSTES.map(a => CORES[a]) }] },
-    options: { plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: x => `${x.label}: ${x.raw} (${fP(x.raw / r.itens)})` } } } } });
+    <div class="kpi"><small>Itens analisados</small><b>${fN(t.total)}</b><span>total do período</span></div>
+    <div class="kpi"><small>Valor em estoque</small><b>${fR(num(r.valor_ajustado))}</b><span>após os ajustes</span></div>
+    <div class="kpi"><small>Acuracidade (Certo)</small><b style="color:var(--verde)">${fP(t.acur)}</b><span>${fN(t.q['Certo'])} itens · ${txtVar}</span></div>
+    <div class="kpi"><small>Desvios totais</small><b>${fP(t.total ? t.desvios / t.total : null)}</b><span>${fN(t.desvios)} itens inconsistentes</span></div>
+    <div class="kpi"><small>Baixa</small><b style="color:var(--verm)">${fP(pc('Baixa'))}</b><span>${fN(t.q['Baixa'])} itens</span></div>
+    <div class="kpi"><small>Baixa 24 Horas (risco imediato)</small><b style="color:var(--amar)">${fP(pc('Baixa 24 Horas'))}</b><span>${fN(t.q['Baixa 24 Horas'])} itens</span></div>
+    <div class="kpi"><small>Falha Protheus</small><b style="color:var(--roxo)">${fP(pc('Falha Protheus'))}</b><span>${fN(t.q['Falha Protheus'])} itens</span></div>`;
+  const ordem = ['Baixa', 'Baixa 24 Horas', 'Certo', 'Falha Protheus'];
+  $('dashDist').innerHTML = `<table><thead><tr><th>Classificação</th><th class="n">Quantidade</th><th class="n">Percentual</th></tr></thead><tbody>
+    ${ordem.map(a => `<tr><td>${tag(a)}</td><td class="n">${fN(t.q[a])}</td><td class="n">${fP(pc(a))}</td></tr>`).join('')}
+    <tr><td><b>Total Geral</b></td><td class="n"><b>${fN(t.total)}</b></td><td class="n"><b>${fP(t.total ? 1 : null)}</b></td></tr></tbody></table>`;
+  grafico('gClass', { type: 'bar', data: { labels: ordem, datasets: [{ data: ordem.map(a => t.q[a]), backgroundColor: ordem.map(a => CORES[a]) }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } } });
+  grafico('gPct', { type: 'pie', data: { labels: ordem.map(a => `${a} — ${fP(pc(a))}`), datasets: [{ data: ordem.map(a => t.q[a]), backgroundColor: ordem.map(a => CORES[a]) }] },
+    options: { plugins: { legend: { position: 'right' }, tooltip: { callbacks: { label: x => `${x.raw} itens` } } } } });
   const rot = resumo.map(x => fD(x.data_ref));
-  grafico('gAcur', { type: 'line', data: { labels: rot, datasets: [{ label: 'Acurácia da contagem', data: resumo.map(x => +(100 * x.corretos / x.conferidos).toFixed(1)), borderColor: '#1F4E78', backgroundColor: '#1F4E78', tension: .2 }] },
-    options: { scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } }, plugins: { legend: { display: false } } } });
-  grafico('gComp', { type: 'bar', data: { labels: rot, datasets: AJUSTES.map((a, k) => ({ label: a, backgroundColor: CORES[a],
-    data: resumo.map(x => [x.final_certo, x.final_baixa, x.final_baixa24, x.final_falha][k]) })) }, options: { scales: { x: { stacked: true }, y: { stacked: true } } } });
-  grafico('gImp', { type: 'bar', data: { labels: rot, datasets: [
-    { label: 'Faltas', backgroundColor: CORES['Baixa'], data: resumo.map(x => num(x.impacto_faltas)) },
-    { label: 'Sobras', backgroundColor: CORES['Falha Protheus'], data: resumo.map(x => num(x.impacto_sobras)) }] },
-    options: { scales: { y: { ticks: { callback: v => rf.format(v) } } } } });
-  $('dashTabela').innerHTML = `<table><thead><tr><th>Mês conferência</th><th class="n">Itens conferidos</th><th class="n">Itens corretos</th><th class="n">Divergências</th>
-    <th class="n">Baixas</th><th class="n">Baixas 24 horas</th><th class="n">Falha Protheus</th><th class="n">% corretos</th><th class="n">Faltas (R$)</th><th class="n">Sobras (R$)</th></tr></thead><tbody>
-    ${resumo.map(x => `<tr><td>${fD(x.data_ref)}</td><td class="n">${fN(x.conferidos)}</td><td class="n">${fN(x.corretos)}</td><td class="n">${fN(x.divergentes)}</td>
-      <td class="n">${fN(x.final_baixa)}</td><td class="n">${fN(x.final_baixa24)}</td><td class="n">${fN(x.final_falha)}</td><td class="n">${fP(x.corretos / x.conferidos)}</td>
-      <td class="n neg">${fR(num(x.impacto_faltas))}</td><td class="n pos">${fR(num(x.impacto_sobras))}</td></tr>`).join('')}</tbody></table>`;
+  grafico('gAcur', { type: 'line', data: { labels: rot, datasets: [{ label: 'Acuracidade', data: resumo.map(x => { const a = totaisCiclo(x).acur; return a == null ? null : +(100 * a).toFixed(2); }),
+    borderColor: '#1E7B4A', backgroundColor: '#1E7B4A', tension: .2 }] },
+    options: { scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: x => fP(x.raw / 100) } } } } });
+  grafico('gComp', { type: 'bar', data: { labels: rot, datasets: ordem.map(a => ({ label: a, backgroundColor: CORES[a], data: resumo.map(x => totaisCiclo(x).q[a]) })) },
+    options: { scales: { x: { stacked: true }, y: { stacked: true } } } });
+  $('dashTabela').innerHTML = `<table><thead><tr><th>Mês conferência</th><th class="n">Itens analisados</th><th class="n">Valor em estoque</th><th class="n">Certo</th>
+    <th class="n">Baixa</th><th class="n">Baixa 24 Horas</th><th class="n">Falha Protheus</th><th class="n">Acuracidade</th><th class="n">Desvios</th></tr></thead><tbody>
+    ${resumo.map(x => { const z = totaisCiclo(x); const p = a => z.total ? ` <small style="color:var(--mut)">(${fP(z.q[a] / z.total)})</small>` : '';
+      return `<tr><td>${fD(x.data_ref)}</td><td class="n">${fN(z.total)}</td><td class="n">${fR(num(x.valor_ajustado))}</td><td class="n">${fN(z.q['Certo'])}</td>
+      <td class="n">${fN(z.q['Baixa'])}${p('Baixa')}</td><td class="n">${fN(z.q['Baixa 24 Horas'])}${p('Baixa 24 Horas')}</td><td class="n">${fN(z.q['Falha Protheus'])}${p('Falha Protheus')}</td>
+      <td class="n"><b>${fP(z.acur)}</b></td><td class="n">${fP(z.total ? z.desvios / z.total : null)}</td></tr>`; }).join('')}</tbody></table>`;
   const itens = await itensDoCiclo(r.id);
-  const top = itens.filter(i => i.divergencia && i.valor_unit != null).map(i => ({ i, imp: num(i.divergencia) * num(i.valor_unit) }))
-    .sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
-  $('dashTop').innerHTML = top.length ? `<table><thead><tr><th>Código</th><th>Descrição</th><th class="n">Saldo</th><th class="n">Contado</th><th class="n">Diferença</th><th>Ajuste</th><th class="n">Impacto (R$)</th></tr></thead><tbody>
-    ${top.map(({ i, imp }) => `<tr><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(i.conferido)}</td>
-      <td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.ajuste || i.tipo)}</td><td class="n ${imp < 0 ? 'neg' : 'pos'}">${fR(imp)}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio">Sem divergências.</div>';
+  const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.valor_unit != null)
+    .map(i => { const dif = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema) - num(i.saldo_sistema); return { i, dif, imp: dif * num(i.valor_unit) }; })
+    .filter(x => x.dif).sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
+  $('dashTop').innerHTML = top.length ? `<table><thead><tr><th>Código</th><th>Descrição</th><th class="n">Saldo sistema</th><th class="n">Saldo ajustado</th><th class="n">Ajuste (qtd)</th><th>Classificação</th><th class="n">Ajuste (R$)</th></tr></thead><tbody>
+    ${top.map(({ i, dif, imp }) => `<tr><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(num(i.saldo_ajustado ?? i.conferido))}</td>
+      <td class="n">${sinal(dif)}</td><td>${tag(i.ajuste)}</td><td class="n ${imp < 0 ? 'neg' : 'pos'}">${fR(imp)}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio">Nenhum ajuste de quantidade neste ciclo.</div>';
 }
-$('dashExport').onclick = () => exportar('Dashboard_Comparativo', resumo.map(x => ({ 'Mês conferência': fD(x.data_ref), 'Itens conferidos': x.conferidos, 'Itens corretos': x.corretos,
-  'Divergências': x.divergentes, 'Final - Certo': x.final_certo, 'Baixas': x.final_baixa, 'Baixas 24 horas': x.final_baixa24, 'Falha Protheus': x.final_falha,
-  '% corretos': x.conferidos ? x.corretos / x.conferidos : null, 'Valor em estoque (R$)': num(x.valor_sistema), 'Faltas (R$)': num(x.impacto_faltas),
-  'Sobras (R$)': num(x.impacto_sobras), 'Impacto líquido (R$)': num(x.impacto_liquido) })));
+$('dashExport').onclick = () => exportar('Dashboard_Comparativo', resumo.map(x => { const z = totaisCiclo(x); return {
+  'Mês conferência': fD(x.data_ref), 'Itens analisados': z.total, 'Valor em estoque (R$)': num(x.valor_ajustado),
+  'Certo': z.q['Certo'], 'Baixa': z.q['Baixa'], 'Baixa 24 Horas': z.q['Baixa 24 Horas'], 'Falha Protheus': z.q['Falha Protheus'],
+  'Acuracidade (%)': z.acur, '% Baixa': z.total ? z.q['Baixa'] / z.total : null, '% Baixa 24 Horas': z.total ? z.q['Baixa 24 Horas'] / z.total : null,
+  '% Falha Protheus': z.total ? z.q['Falha Protheus'] / z.total : null, 'Desvios totais (%)': z.total ? z.desvios / z.total : null }; }));
 
 iniciar();
 </script>
