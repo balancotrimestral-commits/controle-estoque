@@ -230,6 +230,7 @@
       <div class="barra">
         <select id="dashCiclo" aria-label="Ciclo"></select>
         <span class="esp"></span>
+        <button class="pri" id="dashPptx">Baixar apresentação (PowerPoint)</button>
         <button id="dashExport">Exportar comparativo</button>
       </div>
       <div class="kpis" id="dashKpis"></div>
@@ -283,6 +284,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js"></script>
 <script>
 /* =====================================================================
    CONFIGURAÇÃO — cole aqui os dados do seu projeto Supabase
@@ -950,6 +952,308 @@ $('dashExport').onclick = () => exportar('Dashboard_Comparativo', resumo.map(x =
   'Certo': z.q['Certo'], 'Baixa': z.q['Baixa'], 'Baixa 24 Horas': z.q['Baixa 24 Horas'], 'Falha Protheus': z.q['Falha Protheus'],
   'Acuracidade (%)': z.acur, '% Baixa': z.total ? z.q['Baixa'] / z.total : null, '% Baixa 24 Horas': z.total ? z.q['Baixa 24 Horas'] / z.total : null,
   '% Falha Protheus': z.total ? z.q['Falha Protheus'] / z.total : null, 'Desvios totais (%)': z.total ? z.desvios / z.total : null }; }));
+
+/* =====================================================================
+   APRESENTAÇÃO TRIMESTRAL (PowerPoint) — gerada a partir do Dashboard
+   Usa as imagens da pasta "apresentacao/" do repositório.
+   ===================================================================== */
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const PPT = {
+  navy: '272D45', txt: '2C3249', mut: '5B6477', fundo: 'E7E6E6', card: 'FFFFFF', borda: 'D5D8DE',
+  laranja: 'F18800', amarelo: 'FECD20', verde: '76B729', teal: '3F6E62',
+  cor: { 'Baixa': 'DC2626', 'Baixa 24 Horas': 'EA580C', 'Certo': '16A34A', 'Falha Protheus': 'D97706' },
+  graf: { 'Baixa': 'DC2626', 'Baixa 24 Horas': 'F59E0B', 'Certo': '16A34A', 'Falha Protheus': 'FACC15' },
+  tit: 'Kanit Light', corpo: 'Martel Sans'
+};
+const IMAGENS_PPT = ['logo.png', 'capa.png', 'metodologia.png', 'financeiro.jpg', 'riscos.jpg', 'avaliacao.jpg', 'proximos.png', 'encerramento.jpg'];
+
+async function carregarImagensPpt() {
+  const img = {};
+  await Promise.all(IMAGENS_PPT.map(async nome => {
+    try {
+      const r = await fetch('apresentacao/' + nome, { cache: 'force-cache' });
+      if (!r.ok) return;
+      const b = await r.blob();
+      img[nome] = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); });
+    } catch (e) { /* sem imagem: a apresentação sai sem ela */ }
+  }));
+  return img;
+}
+
+const pctBR = v => v == null || !isFinite(v) ? '–' : (v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+const numBR = v => Number(v || 0).toLocaleString('pt-BR');
+const rsBR = v => 'R$' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const ppBR = v => (v >= 0 ? '+' : '') + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' p.p.';
+
+function montarApresentacao(pptx, d, img) {
+  // d = { ciclo, t (totais), valor, anteriores: [{ciclo,t,valor}], top: [...] }
+  const P = PPT, ORD = ['Baixa', 'Baixa 24 Horas', 'Certo', 'Falha Protheus'];
+  const [ano, mes] = d.ciclo.data_ref.split('-').map(Number);
+  const nomeMes = MESES[mes - 1], periodo = `${nomeMes} ${ano}`;
+  const t = d.t, pc = a => t.total ? t.q[a] / t.total : null;
+  const ant = d.anteriores.length ? d.anteriores[d.anteriores.length - 1] : null;
+  const nomeAnt = ant ? `${MESES[+ant.ciclo.data_ref.slice(5, 7) - 1]}/${ant.ciclo.data_ref.slice(0, 4)}` : '';
+  const pcA = (x, a) => x.t.total ? x.t.q[a] / x.t.total : 0;
+
+  pptx.layout = 'LAYOUT_WIDE';
+  pptx.author = 'CIMI – Controle de Estoque';
+  pptx.title = `Inventário Trimestral – ${periodo}`;
+
+  const base = (titulo, subtitulo, opt = {}) => {
+    const s = pptx.addSlide();
+    s.background = { color: P.fundo };
+    for (const y of [0, 7.35]) {
+      s.addShape('rect', { x: 0.74, y, w: 11.84, h: 0.13, fill: { color: P.laranja }, line: { color: P.laranja } });
+      s.addShape('rect', { x: 0.74 + 8.69, y, w: 1.33, h: 0.13, fill: { color: P.amarelo }, line: { color: P.amarelo } });
+      s.addShape('rect', { x: 0.74 + 10.02, y, w: 1.82, h: 0.13, fill: { color: P.verde }, line: { color: P.verde } });
+    }
+    if (img['logo.png'] && !opt.semLogo) s.addImage({ data: img['logo.png'], x: 12.0, y: 0.3, w: 0.9, h: 0.75 });
+    const x = opt.x ?? 0.72;
+    if (titulo) s.addText(titulo, { x, y: opt.y ?? 0.57, w: opt.w ?? 11.0, h: 0.65, fontFace: P.tit, fontSize: titulo.length > 40 ? 28 : 34, color: P.navy, margin: 0 });
+    if (subtitulo) s.addText(subtitulo, { x, y: (opt.y ?? 0.57) + 0.72, w: opt.w ?? 11.0, h: 0.35, fontFace: P.tit, fontSize: 17, color: opt.corSub || P.navy, margin: 0 });
+    return s;
+  };
+  const card = (s, x, y, w, h, opt = {}) => s.addShape('rect', { x, y, w, h, fill: { color: P.card }, line: { color: P.borda, width: 0.75 }, ...opt });
+  const faixaEsq = (s, x, y, h, cor) => s.addShape('rect', { x, y, w: 0.06, h, fill: { color: cor }, line: { color: cor } });
+
+  /* 1 — CAPA */
+  {
+    const s = pptx.addSlide(); s.background = { color: P.fundo };
+    s.addText('CIMI', { x: 0, y: 0.25, w: 13.33, h: 1.1, align: 'center', fontFace: 'Arial Black', fontSize: 60, bold: true, color: '111111', margin: 0 });
+    s.addText('CENTRAL INTEGRADA DE MANUTENÇÃO DA INFRAESTRUTURA', { x: 0, y: 1.3, w: 13.33, h: 0.35, align: 'center', fontFace: 'Arial', fontSize: 15, bold: true, color: '111111' });
+    s.addText('CONTROLE DE ESTOQUE', { x: 3.9, y: 1.85, w: 5.5, h: 0.3, align: 'center', fontFace: 'Arial', fontSize: 14, bold: true, color: '111111' });
+    s.addText('Gestão, Performance e Acuracidade', { x: 5.4, y: 2.15, w: 5.5, h: 0.3, align: 'center', fontFace: 'Arial', fontSize: 13, color: '111111' });
+    if (img['capa.png']) s.addImage({ data: img['capa.png'], x: 4.4, y: 2.6, w: 4.2, h: 4.2 });
+    s.addText([{ text: `CONTROLE DE ESTOQUE CIMI – ${ano}`, options: { bold: true, fontSize: 16, breakLine: true } },
+      { text: `( ${periodo} )`, options: { bold: true, fontSize: 11 } }],
+      { x: 7.6, y: 3.15, w: 5.2, h: 0.75, align: 'center', fontFace: 'Arial', color: '111111' });
+  }
+
+  /* 2 — METODOLOGIA */
+  {
+    const s = base('Metodologia', 'Escopo e Metodologia da Conferência');
+    if (img['metodologia.png']) s.addImage({ data: img['metodologia.png'], x: 2.04, y: 1.95, w: 9.24, h: 4.23 });
+    [['Coleta', 2.54], ['Comparação', 4.76], ['Análise', 6.94], ['Ajustes', 9.12]].forEach(([tx, x]) =>
+      s.addText(tx, { x, y: 5.16, w: 1.74, h: 0.33, align: 'center', fontFace: P.tit, fontSize: 18, color: P.txt }));
+    s.addText([{ text: 'A análise compara a quantidade física identificada com os registros do sistema, classificando os itens em: ', options: {} },
+      { text: 'Baixa, Baixa 24 Horas, Certo e Falha Protheus.', options: { bold: true } }],
+      { x: 0.9, y: 6.35, w: 11.5, h: 0.7, align: 'center', fontFace: P.corpo, fontSize: 15, color: P.txt });
+  }
+
+  /* 3 — IMPACTO FINANCEIRO */
+  {
+    const s = base('Impacto Financeiro', 'Visão Financeira do Estoque', { w: 7 });
+    if (img['financeiro.jpg']) s.addImage({ data: img['financeiro.jpg'], x: 8.33, y: 0.13, w: 5.0, h: 7.22 });
+    s.addText(rsBR(d.valor), { x: 0.4, y: 2.0, w: 4.6, h: 0.8, align: 'center', fontFace: P.tit, fontSize: 36, color: P.navy });
+    s.addText('Valor Total do Estoque', { x: 0.4, y: 2.8, w: 4.6, h: 0.35, align: 'center', fontFace: P.tit, fontSize: 15, color: P.txt });
+    s.addText(numBR(t.total), { x: 5.0, y: 2.0, w: 3.0, h: 0.8, align: 'center', fontFace: P.tit, fontSize: 36, color: P.navy });
+    s.addText([{ text: 'Itens Analisados', options: { breakLine: true } }, { text: 'Total do período', options: { fontSize: 11 } }],
+      { x: 5.0, y: 2.8, w: 3.0, h: 0.6, align: 'center', fontFace: P.tit, fontSize: 15, color: P.txt });
+    s.addText(pctBR(t.acur), { x: 1.5, y: 3.65, w: 5.6, h: 0.8, align: 'center', fontFace: P.tit, fontSize: 40, color: P.navy });
+    s.addText([{ text: 'Acuracidade Atual', options: { fontSize: 16, breakLine: true } }, { text: 'Itens classificados como Certo', options: { fontSize: 11 } }],
+      { x: 1.5, y: 4.45, w: 5.6, h: 0.75, align: 'center', fontFace: P.tit, color: P.txt });
+    s.addText('O controle de estoque possui impacto direto na confiabilidade das informações financeiras e operacionais. A acuracidade dos registros é fundamental para a integridade dos dados e para a tomada de decisão gerencial.',
+      { x: 0.6, y: 5.55, w: 7.4, h: 1.3, align: 'justify', fontFace: P.corpo, fontSize: 12, color: P.txt });
+  }
+
+  /* 4 — RESULTADOS */
+  {
+    const s = base('Resultados', 'Resultado Consolidado da Classificação de Itens');
+    card(s, 0.74, 2.13, 5.9, 4.39);
+    s.addChart('bar', ORD.map(a => ({ name: a, labels: ORD, values: ORD.map(b => b === a ? t.q[a] : 0) })), {
+      x: 0.84, y: 2.2, w: 5.7, h: 4.25, barDir: 'col', barGrouping: 'stacked', barGapWidthPct: 60,
+      chartColors: ORD.map(a => P.graf[a]), showLegend: false,
+      showValue: true, dataLabelFormatCode: '#,##0;;;', dataLabelPosition: 'inEnd', dataLabelFontSize: 10, dataLabelColor: '1F2937',
+      catAxisLabelFontSize: 10, catAxisLabelFontFace: P.corpo, valAxisLabelFontSize: 9, valGridLine: { color: 'E5E7EB', size: 0.5 },
+      showTitle: true, title: 'Quantidade de Itens por Classificação', titleFontSize: 11, titleColor: P.mut
+    });
+    s.addText('Distribuição por Classificação', { x: 6.93, y: 2.2, w: 5.69, h: 0.4, fontFace: P.tit, fontSize: 18, color: P.navy });
+    const cab = ['Classificação', 'Quantidade', 'Percentual'].map(tx => ({ text: tx, options: { bold: true, color: P.txt } }));
+    const linhas = ORD.map(a => [{ text: a, options: { color: P.cor[a] } }, { text: numBR(t.q[a]), options: { align: 'center' } }, { text: pctBR(pc(a)), options: { align: 'center' } }]);
+    const tot = [{ text: 'Total Geral', options: { bold: true } }, { text: numBR(t.total), options: { bold: true, align: 'center' } }, { text: '100,00%', options: { bold: true, align: 'center' } }];
+    s.addTable([cab, ...linhas, tot], { x: 6.93, y: 2.81, w: 5.69, colW: [2.3, 1.7, 1.69], rowH: 0.6, fontFace: P.corpo, fontSize: 13, color: P.txt,
+      fill: { color: P.card }, border: { type: 'solid', pt: 0.5, color: 'C9CDD4' }, valign: 'middle' });
+  }
+
+  /* 5 — INDICADORES-CHAVE */
+  {
+    const s = base('Indicadores-Chave', 'Distribuição Percentual – Acuracidade e Pontos de Alerta');
+    s.addChart('pie', [{ name: 'Classificação', labels: ORD, values: ORD.map(a => t.q[a]) }], {
+      x: 0.4, y: 2.0, w: 5.4, h: 4.8, chartColors: ORD.map(a => P.graf[a]), showLegend: true, legendPos: 'r', legendFontSize: 10, legendFontFace: P.corpo,
+      showPercent: true, showValue: false, dataLabelFormatCode: '0.00%', dataLabelColor: '111111', dataLabelFontSize: 11, dataLabelFontBold: true, dataLabelPosition: 'bestFit'
+    });
+    s.addText('Leitura Executiva', { x: 5.95, y: 1.95, w: 6.5, h: 0.35, fontFace: P.tit, fontSize: 16, color: P.navy });
+    const itensCard = [
+      ['Certo', `${numBR(t.q['Certo'])} itens com registros alinhados ao inventário físico`],
+      ['Falha Protheus', `${numBR(t.q['Falha Protheus'])} itens com inconsistências sistêmicas a regularizar`],
+      ['Baixa', `${numBR(t.q['Baixa'])} itens com divergências que exigem ação`],
+      ['Baixa 24 Horas', `${numBR(t.q['Baixa 24 Horas'])} itens em janela crítica de regularização`]];
+    itensCard.forEach(([a, tx], k) => {
+      const x = 5.95 + (k % 2) * 3.35, y = 2.4 + Math.floor(k / 2) * 2.3;
+      card(s, x, y, 3.15, 2.1); faixaEsq(s, x, y, 2.1, P.cor[a]);
+      s.addText(`${pctBR(pc(a))} — ${a}`, { x: x + 0.2, y: y + 0.15, w: 2.85, h: 0.6, fontFace: P.tit, fontSize: 15, color: P.cor[a], valign: 'top' });
+      s.addText(tx, { x: x + 0.2, y: y + 0.85, w: 2.85, h: 1.1, fontFace: P.corpo, fontSize: 11.5, color: P.txt, valign: 'top' });
+    });
+  }
+
+  /* 6 — EVOLUÇÃO ENTRE TRIMESTRES (quando há ciclos anteriores) */
+  if (d.anteriores.length) {
+    const s = base('Evolução', 'Comparativo com os Trimestres Anteriores');
+    const serie = [...d.anteriores, { ciclo: d.ciclo, t }];
+    const rot = serie.map(x => `${MESES[+x.ciclo.data_ref.slice(5, 7) - 1].slice(0, 3)}/${x.ciclo.data_ref.slice(2, 4)}`);
+    card(s, 0.74, 2.05, 5.6, 4.6);
+    s.addChart('line', [{ name: 'Acuracidade (%)', labels: rot, values: serie.map(x => +(100 * (x.t.acur || 0)).toFixed(2)) }], {
+      x: 0.84, y: 2.1, w: 5.4, h: 4.5, chartColors: [P.cor['Certo']], lineSize: 3, lineDataSymbolSize: 9,
+      showValue: true, dataLabelFormatCode: '0.00"%"', dataLabelPosition: 't', dataLabelFontSize: 11,
+      valAxisMinVal: 0, valAxisMaxVal: 100, valAxisLabelFormatCode: '0"%"', valAxisLabelFontSize: 9, catAxisLabelFontSize: 11,
+      valGridLine: { color: 'E5E7EB', size: 0.5 }, showLegend: false, showTitle: true, title: 'Acuracidade por trimestre (% Certo)', titleFontSize: 11, titleColor: P.mut
+    });
+    const cab = ['Trimestre', 'Itens', 'Certo', 'Baixa', 'Baixa 24h', 'Falha Protheus'].map(tx => ({ text: tx, options: { bold: true, align: 'center' } }));
+    const linhas = serie.map((x, k) => [rot[k], numBR(x.t.total), pctBR(x.t.acur), pctBR(pcA(x, 'Baixa')), pctBR(pcA(x, 'Baixa 24 Horas')), pctBR(pcA(x, 'Falha Protheus'))]
+      .map((tx, j) => ({ text: tx, options: { align: 'center', bold: k === serie.length - 1, color: j === 2 ? P.cor['Certo'] : P.txt } })));
+    s.addTable([cab, ...linhas], { x: 6.6, y: 2.05, w: 6.0, colW: [1.05, 0.8, 1.0, 0.95, 1.0, 1.2], rowH: 0.45, fontFace: P.corpo, fontSize: 11, color: P.txt,
+      fill: { color: P.card }, border: { type: 'solid', pt: 0.5, color: 'C9CDD4' }, valign: 'middle' });
+    const dAc = (t.acur - ant.t.acur) * 100, dFa = (pc('Falha Protheus') - pcA(ant, 'Falha Protheus')) * 100;
+    s.addText([
+      { text: 'Em relação a ' + nomeAnt + ': ', options: { bold: true } },
+      { text: `acuracidade ${dAc >= 0 ? 'subiu' : 'caiu'} ${ppBR(dAc).replace('+', '')}` },
+      { text: `; Falha Protheus ${dFa >= 0 ? 'subiu' : 'caiu'} ${ppBR(dFa).replace('+', '')}.` }],
+      { x: 6.6, y: 2.05 + 0.45 * (serie.length + 1) + 0.3, w: 6.0, h: 0.9, fontFace: P.corpo, fontSize: 12, color: P.txt, valign: 'top' });
+  }
+
+  /* 7 — RISCOS */
+  {
+    const s = base('Riscos', null, { x: 5.6, y: 1.0, w: 6.2 });
+    s.addText([{ text: 'Falha Protheus', options: { color: 'D9480F' } }, { text: ' e Baixa 24 Horas: pontos de atenção do ciclo' }],
+      { x: 5.6, y: 1.72, w: 7.2, h: 0.35, fontFace: P.tit, fontSize: 16, color: P.navy, margin: 0 });
+    if (img['riscos.jpg']) s.addImage({ data: img['riscos.jpg'], x: 0, y: 0.13, w: 5.0, h: 7.22 });
+    card(s, 5.6, 2.5, 7.0, 1.6);
+    s.addText(`${pctBR(pc('Falha Protheus'))} — Falha Protheus`, { x: 5.8, y: 2.6, w: 6.6, h: 0.4, fontFace: P.tit, fontSize: 15, color: P.navy });
+    s.addText(`${numBR(t.q['Falha Protheus'])} itens com quantidade física maior que o registro do sistema (inconsistência sistêmica, ex.: falta de entrada da Nota Fiscal de Compra). Devem ser regularizados no sistema e o registro da ocorrência mantido.`,
+      { x: 5.8, y: 3.0, w: 6.6, h: 1.0, fontFace: P.corpo, fontSize: 11, color: P.txt, valign: 'top' });
+    card(s, 5.6, 4.3, 7.0, 1.4);
+    s.addText(`${pctBR(pc('Baixa 24 Horas'))} — Baixa 24 Horas  |  ${pctBR(pc('Baixa'))} — Baixa`, { x: 5.8, y: 4.4, w: 6.6, h: 0.4, fontFace: P.tit, fontSize: 15, color: P.navy });
+    s.addText(`${numBR(t.q['Baixa 24 Horas'])} itens em janela crítica de regularização e ${numBR(t.q['Baixa'])} itens com divergência real que exigem ação de baixa no sistema.`,
+      { x: 5.8, y: 4.8, w: 6.6, h: 0.8, fontFace: P.corpo, fontSize: 11, color: P.txt, valign: 'top' });
+    s.addShape('rect', { x: 5.6, y: 5.95, w: 7.0, h: 0.75, fill: { color: 'E0EBE7' }, line: { color: 'E0EBE7' } });
+    s.addText([{ text: 'Desvios totais: ', options: { bold: true } }, { text: `${pctBR(t.total ? t.desvios / t.total : null)} (${numBR(t.desvios)} itens) a tratar por correções sistêmicas.` }],
+      { x: 5.8, y: 5.95, w: 6.6, h: 0.75, fontFace: P.corpo, fontSize: 12, color: P.txt, valign: 'middle' });
+  }
+
+  /* 8 — PRINCIPAIS AJUSTES */
+  if (d.top.length) {
+    const s = base('Principais Ajustes', 'Itens com maior impacto financeiro no ciclo');
+    const cab = ['Código', 'Descrição', 'Saldo sistema', 'Saldo ajustado', 'Ajuste', 'Classificação', 'Impacto (R$)'].map(tx => ({ text: tx, options: { bold: true, align: 'center' } }));
+    const linhas = d.top.map(x => [
+      { text: x.codigo }, { text: x.descricao || '' }, { text: numBR(x.saldo), options: { align: 'right' } }, { text: numBR(x.ajustado), options: { align: 'right' } },
+      { text: (x.dif > 0 ? '+' : '') + numBR(x.dif), options: { align: 'right', color: x.dif < 0 ? P.cor['Baixa'] : '7C3AED' } },
+      { text: x.ajuste, options: { color: P.cor[x.ajuste] || P.txt } },
+      { text: rsBR(x.imp).replace('R$-', '-R$'), options: { align: 'right', color: x.imp < 0 ? P.cor['Baixa'] : '7C3AED' } }]);
+    s.addTable([cab, ...linhas], { x: 0.74, y: 2.0, w: 11.84, colW: [1.0, 4.4, 1.2, 1.25, 0.95, 1.6, 1.44], rowH: 0.42, fontFace: P.corpo, fontSize: 10.5, color: P.txt,
+      fill: { color: P.card }, border: { type: 'solid', pt: 0.5, color: 'C9CDD4' }, valign: 'middle', autoPage: false });
+  }
+
+  /* 9 — AVALIAÇÃO */
+  {
+    const s = base('Avaliação do Controle de Estoque e Oportunidades', null, { y: 0.45, w: 11.1 });
+    if (img['avaliacao.jpg']) s.addImage({ data: img['avaliacao.jpg'], x: 0.74, y: 1.3, w: 6.6, h: 2.9 });
+    let tx;
+    if (ant) {
+      const dAc = (t.acur - ant.t.acur) * 100, dFa = (pc('Falha Protheus') - pcA(ant, 'Falha Protheus')) * 100;
+      const dBx = ((pc('Baixa') + pc('Baixa 24 Horas')) - (pcA(ant, 'Baixa') + pcA(ant, 'Baixa 24 Horas'))) * 100;
+      tx = `No ciclo de ${periodo}, a acuracidade foi de ${pctBR(t.acur)}, ${dAc >= 0 ? 'avanço' : 'recuo'} de ${ppBR(Math.abs(dAc)).replace('+', '')} em relação a ${nomeAnt} (${pctBR(ant.t.acur)}). ` +
+        `As Baixas e Baixas 24 Horas somam ${pctBR(pc('Baixa') + pc('Baixa 24 Horas'))} (${dBx <= 0 ? 'redução' : 'aumento'} de ${ppBR(Math.abs(dBx)).replace('+', '')}) ` +
+        `e a Falha Protheus ${dFa >= 0 ? 'subiu' : 'caiu'} para ${pctBR(pc('Falha Protheus'))}. ` +
+        (t.acur >= 0.95 ? 'O resultado atinge o patamar de excelência (acima de 95%).' : 'A meta de referência é elevar a acuracidade para acima de 95%.');
+    } else {
+      tx = `No ciclo de ${periodo}, a acuracidade foi de ${pctBR(t.acur)}, com ${numBR(t.desvios)} itens inconsistentes (${pctBR(t.total ? t.desvios / t.total : null)}). ` +
+        'Este resultado passa a ser a referência para os próximos ciclos de conferência.';
+    }
+    s.addText(tx, { x: 7.6, y: 1.3, w: 5.0, h: 2.9, fontFace: P.corpo, fontSize: 12, color: P.txt, align: 'justify', valign: 'top' });
+    [['1', 'Correção das Falhas Protheus', 'Regularizar no sistema as inconsistências identificadas (entradas de nota fiscal pendentes)'],
+     ['2', 'Tratamento das Baixas', 'Concluir as baixas pendentes, priorizando os itens em janela de 24 horas'],
+     ['3', 'Monitoramento Contínuo', 'Acompanhar os indicadores ciclo a ciclo para validar as correções e evitar recorrências']]
+      .forEach(([n, tit, desc], k) => {
+        const x = 0.74 + k * 4.0;
+        card(s, x, 4.5, 3.8, 2.5);
+        s.addText(n, { x, y: 4.55, w: 3.8, h: 0.4, align: 'center', fontFace: P.tit, fontSize: 16, color: P.txt });
+        s.addText(tit, { x: x + 0.15, y: 4.95, w: 3.5, h: 0.6, align: 'center', fontFace: P.tit, fontSize: 15, color: P.navy });
+        s.addText(desc, { x: x + 0.2, y: 5.6, w: 3.4, h: 1.2, align: 'center', fontFace: P.corpo, fontSize: 11, color: P.txt, valign: 'top' });
+      });
+  }
+
+  /* 10 — RECOMENDAÇÕES */
+  {
+    const s = base('Recomendações', 'Recomendações Estratégicas para Sustentação das Correções de Estoque', { y: 1.3 });
+    [['1', 'Validar as Correções no Sistema', 'Confirmar que Falha Protheus e demais discrepâncias foram tratadas sistemicamente e que os registros refletem os ajustes'],
+     ['2', 'Monitorar a Estabilidade dos Indicadores', 'Acompanhar regularmente Baixa, Baixa 24 Horas e demais métricas para garantir que as correções permaneçam consistentes'],
+     ['3', 'Sustentar a Melhoria Contínua', 'Realizar validações periódicas ciclo a ciclo para manter as melhorias e identificar rapidamente qualquer desvio']]
+      .forEach(([n, tit, desc], k) => {
+        const x = 0.74 + k * 4.0;
+        s.addShape('rect', { x, y: 3.25, w: 3.8, h: 0.06, fill: { color: P.teal }, line: { color: P.teal } });
+        card(s, x, 3.31, 3.8, 2.9);
+        s.addShape('ellipse', { x: x + 1.65, y: 3.05, w: 0.5, h: 0.5, fill: { color: P.teal }, line: { color: P.teal } });
+        s.addText(n, { x: x + 1.65, y: 3.05, w: 0.5, h: 0.5, align: 'center', valign: 'middle', fontFace: P.corpo, fontSize: 12, color: 'FFFFFF' });
+        s.addText(tit, { x: x + 0.2, y: 3.65, w: 3.4, h: 0.75, align: 'center', fontFace: P.tit, fontSize: 15, color: P.navy });
+        s.addText(desc, { x: x + 0.25, y: 4.45, w: 3.3, h: 1.6, fontFace: P.corpo, fontSize: 11, color: P.txt, valign: 'top' });
+      });
+  }
+
+  /* 11 — PRÓXIMOS PASSOS */
+  {
+    const s = base('Próximos Passos', 'Ações Imediatas e Monitoramento Contínuo', { y: 0.5 });
+    if (img['proximos.png']) s.addImage({ data: img['proximos.png'], x: 0.4, y: 2.3, w: 5.3, h: 3.15 });
+    [['Regularização', 0.45], ['Monitoramento', 2.2], ['Nova Conferência', 3.95]].forEach(([tx, x]) =>
+      s.addText(tx, { x, y: 5.6, w: 1.75, h: 0.5, align: 'center', fontFace: P.corpo, fontSize: 12, color: P.txt }));
+    s.addText([{ text: 'Parâmetro de referência Atual', options: { breakLine: true } }, { text: 'Referência para o Próximo Ciclo' }],
+      { x: 6.4, y: 1.55, w: 6.0, h: 0.8, align: 'center', fontFace: P.tit, fontSize: 18, color: P.navy });
+    const bloco = (v, rot, x, y, cor, extra) => {
+      s.addText(v, { x, y, w: 2.8, h: 0.55, align: 'center', fontFace: P.tit, fontSize: 26, bold: true, color: cor });
+      s.addText(extra ? [{ text: rot, options: { breakLine: true } }, { text: extra, options: { fontSize: 10, color: '1D4ED8', bold: true } }] : rot,
+        { x, y: y + 0.5, w: 2.8, h: extra ? 0.55 : 0.35, align: 'center', fontFace: P.corpo, fontSize: 13, color: P.txt });
+    };
+    bloco(numBR(t.total), 'Itens Analisados', 6.6, 2.45, '1D4ED8');
+    bloco(pctBR(t.acur), 'Corretos', 9.4, 2.45, '15803D');
+    bloco(pctBR(pc('Falha Protheus')), 'Falha Protheus', 8.0, 3.5, 'D9480F');
+    bloco(pctBR(pc('Baixa')), 'Baixa', 6.6, 4.55, 'DC2626', `${numBR(t.q['Baixa'])} itens`);
+    bloco(pctBR(pc('Baixa 24 Horas')), 'Baixa 24 Horas', 9.4, 4.55, 'E8590C', `${numBR(t.q['Baixa 24 Horas'])} itens`);
+    s.addText([{ text: 'Valor em Estoque', options: { fontSize: 16, color: P.navy, breakLine: true } }, { text: rsBR(d.valor), options: { fontSize: 22, bold: true, color: 'B8860B' } }],
+      { x: 6.6, y: 5.95, w: 5.6, h: 0.95, align: 'center', fontFace: P.tit });
+  }
+
+  /* 12 — ENCERRAMENTO */
+  {
+    const s = base(null, null, { semLogo: false });
+    if (img['encerramento.jpg']) s.addImage({ data: img['encerramento.jpg'], x: 8.33, y: 0.13, w: 5.0, h: 7.22 });
+    s.addText(`Controle de Estoque CIMI – ${ano}`, { x: 0.6, y: 1.4, w: 7.4, h: 1.8, align: 'center', fontFace: P.tit, fontSize: 40, color: P.navy });
+    s.addText('Gestão, Performance e Acuracidade', { x: 0.6, y: 3.7, w: 7.4, h: 0.35, fontFace: P.corpo, fontSize: 12, color: P.txt });
+    s.addShape('line', { x: 0.6, y: 4.15, w: 7.4, h: 0, line: { color: '9CA3AF', width: 0.75 } });
+    s.addText(`Central Integrada de Manutenção da Infraestrutura – CIMI | ${nomeMes} de ${ano}`, { x: 0.6, y: 4.5, w: 7.4, h: 0.35, fontFace: P.corpo, fontSize: 12, color: P.txt });
+    s.addText('Obrigado!', { x: 5.0, y: 6.35, w: 3.2, h: 0.8, align: 'right', fontFace: P.tit, fontSize: 30, color: P.navy });
+  }
+  return `Inventario_Trimestral_${nomeMes.normalize('NFD').replace(/[̀-ͯ]/g, '')}_${ano}.pptx`;
+}
+
+$('dashPptx').onclick = async () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
+  if (!r) return toast('Selecione um ciclo fechado.', true);
+  if (typeof PptxGenJS === 'undefined') return toast('O gerador de apresentação não carregou. Verifique a internet e atualize a página.', true);
+  carregando(true);
+  try {
+    const anteriores = resumo.slice(0, resumo.indexOf(r)).map(x => ({ ciclo: x, t: totaisCiclo(x) }));
+    const itens = await itensDoCiclo(r.id);
+    const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.valor_unit != null)
+      .map(i => { const s = num(i.saldo_sistema), aj = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema);
+        return { codigo: i.codigo, descricao: i.descricao, saldo: s, ajustado: aj, dif: aj - s, ajuste: i.ajuste, imp: (aj - s) * num(i.valor_unit) }; })
+      .filter(x => x.dif).sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
+    const img = await carregarImagensPpt();
+    const pptx = new PptxGenJS();
+    const nome = montarApresentacao(pptx, { ciclo: r, t: totaisCiclo(r), valor: num(r.valor_ajustado), anteriores, top }, img);
+    await pptx.writeFile({ fileName: nome });
+    const faltam = IMAGENS_PPT.length - Object.keys(img).length;
+    toast(`Apresentação gerada: ${nome}` + (faltam ? ` (${faltam} imagem(ns) não encontrada(s) na pasta apresentacao/)` : ''), !!faltam);
+  } catch (e) { falha(e); } finally { carregando(false); }
+};
 
 iniciar();
 </script>
