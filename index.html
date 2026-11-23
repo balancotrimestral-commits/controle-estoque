@@ -143,9 +143,16 @@
         <select id="amoCiclo" aria-label="Ciclo"></select>
         <span id="amoStatus"></span>
         <span class="esp"></span>
-        <button class="pri" id="amoNovo">+ Novo ciclo (importar Excel)</button>
+        <button class="pri" id="amoNovo">+ Novo ciclo (importar Saldo em Estoque)</button>
+        <button id="amoImportCont">Importar contagem (Excel)</button>
         <button id="amoEnviar">Enviar para Inventário ➜</button>
-        <button id="amoExport">Exportar Excel</button>
+        <select id="amoExportar" aria-label="Exportar">
+          <option value="">Exportar Excel…</option>
+          <option value="saldo">1 – Saldo em Estoque</option>
+          <option value="contagem">2 – Amostragem (planilha de contagem)</option>
+          <option value="ajustada">3 – Contagem por Amostragem (preenchida)</option>
+          <option value="completa">Completa (todas as colunas)</option>
+        </select>
         <button class="perigo" id="amoExcluir">Excluir ciclo</button>
       </div>
       <p class="dica">Digite a contagem física em <b>Amostra Conferida</b>. Divergência, Status e Dado Identificado são calculados na hora. Enter pula para o próximo item.</p>
@@ -217,7 +224,7 @@
         <input id="hojeBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
         <span class="esp"></span>
         <button class="pri" id="hojeImportar">+ Anexar Excel</button>
-        <button id="hojeExport">Exportar Excel</button>
+        <button id="hojeExport">Exportar Saldo em Estoque</button>
         <button class="perigo" id="hojeExcluir">Excluir esta importação</button>
       </div>
       <p class="dica">Dados reais puxados do sistema, apenas para consulta. Não alteram nenhuma outra tela.</p>
@@ -262,6 +269,19 @@
     <label class="check"><input type="checkbox" id="nHist"> <span>Arquivo de histórico (já tem a coluna <b>Amostra Conferida</b> e uma <b>Data</b> por linha). Cria um ciclo por data, já fechado.</span></label>
     <div class="previa hide" id="nPrevia"></div>
     <div class="acoes"><button id="nCancelar">Cancelar</button><button class="pri" id="nOk" disabled>Importar</button></div>
+  </div>
+</div>
+
+<!-- MODAL: importar contagem -->
+<div class="fundoModal hide" id="mCont">
+  <div class="modal">
+    <h2>Importar contagem</h2>
+    <p class="dica" style="margin:0">Planilha "Amostragem – Contagem" ou "Contagem por Amostragem – Trimestral". O sistema lê a coluna <b>CONT. AMOSTRAGEM</b> pelo <b>CODIGO</b> e preenche a Amostra Conferida do ciclo selecionado.</p>
+    <label for="cArquivo">Planilha Excel</label>
+    <input type="file" id="cArquivo" accept=".xlsx,.xlsm,.xls,.csv">
+    <label class="check"><input type="checkbox" id="cSubst" checked> <span>Substituir contagens já lançadas no sistema</span></label>
+    <div class="previa hide" id="cPrevia"></div>
+    <div class="acoes"><button id="cCancelar">Cancelar</button><button class="pri" id="cOk" disabled>Importar contagem</button></div>
   </div>
 </div>
 
@@ -364,7 +384,7 @@ const COLUNAS = {
   armazem: ['ARMAZEM', 'ARMZ', 'ARM', 'LOCAL'],
   saldo: ['SALDOEMESTOQUE', 'SALDO', 'SALDOATUAL', 'QUANTIDADE', 'QTD', 'SALDOESTOQUE'],
   valor_total: ['VALOREMESTOQUE', 'VALORTOTAL', 'VALORTOTALR', 'VALOR', 'VALORESTOQUE'],
-  conferido: ['AMOSTRACONFERIDA', 'CONFERIDO', 'CONFERENCIA', 'CONTAGEM', 'QTDCONFERIDA'],
+  conferido: ['AMOSTRACONFERIDA', 'CONTAMOSTRAGEM', 'CONTAGEMAMOSTRAGEM', 'CONFERIDO', 'CONFERENCIA', 'CONTAGEM', 'QTDCONFERIDA'],
   ajuste: ['AJUSTE', 'DADOIDENTIFICADO'],
   data: ['DATA', 'DATAMES', 'DATACONFERENCIA']
 };
@@ -421,7 +441,7 @@ async function lerExcel(arquivo) {
           data: paraData(pega('data'))
         });
       }
-      return { aba: nomeAba, itens, temConferido: idx.conferido !== undefined, temData: idx.data !== undefined };
+      return { aba: nomeAba, itens, temConferido: idx.conferido !== undefined, temData: idx.data !== undefined, temValor: idx.valor_total !== undefined };
     }
   }
   throw new Error('Não encontrei as colunas "Código" e "Saldo em Estoque" na planilha.');
@@ -537,7 +557,7 @@ async function desenharAmostragem() {
   const itens = c ? await itensDoCiclo(c.id) : [];
   const editavel = c && c.status === 'conferencia';
   $('amoStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
-  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExport').disabled = !c;
+  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel;
   const conf = itens.filter(i => i.conferido !== null);
   const corr = conf.filter(i => i.status === 'Correto').length;
   $('amoChips').innerHTML = c ? `
@@ -612,12 +632,116 @@ $('amoExcluir').onclick = async () => {
   try { carregando(true); await ok(sb.from('ciclos').delete().eq('id', c.id)); delete cache[c.id]; cicloSelecionado = null; await carregarCiclos(); toast('Ciclo excluído.'); abrirAba('amostragem'); }
   catch (e) { falha(e); carregando(false); }
 };
-$('amoExport').onclick = async () => {
-  const c = cicloPorId($('amoCiclo').value); if (!c) return;
+/* ---------- planilhas no formato dos relatórios ---------- */
+function baixarPlanilha(nomeArquivo, nomeAba, aoa, opt = {}) {
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  if (opt.formula) {               // coluna de STATUS com a mesma fórmula da planilha original
+    const { col, a, b } = opt.formula;
+    for (let r = opt.linha1; r < aoa.length; r++) {
+      const n = r + 1, ref = col + n, atual = ws[ref] ? ws[ref].v : '';
+      ws[ref] = { t: 's', v: atual || '', f: `IF(COUNT(${a}${n}:${b}${n})<>2,"",IF(${a}${n}=${b}${n},"Certo",IF(${a}${n}>${b}${n},"Baixa","Falha Protheus")))` };
+    }
+  }
+  if (opt.formatos) for (const [col, fmt] of Object.entries(opt.formatos))
+    for (let r = opt.linha1; r < aoa.length; r++) { const c = ws[col + (r + 1)]; if (c && c.t === 'n') c.z = fmt; }
+  if (opt.mesclar) ws['!merges'] = opt.mesclar;
+  ws['!cols'] = opt.larguras.map(w => ({ wch: w }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, nomeAba);
+  XLSX.writeFile(wb, nomeArquivo);
+}
+const dataExcel = iso => { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d, 12); };
+const statusAuto = (saldo, cont) => cont == null || saldo == null ? '' : saldo === cont ? 'Certo' : saldo > cont ? 'Baixa' : 'Falha Protheus';
+const FMT_RS = '"R$" #,##0.00', FMT_DATA = 'dd/mm/yyyy';
+
+// 1 – Saldo em Estoque (saldo real antes da correção)
+function exportarSaldo(dataIso, itens, sufixo) {
+  const aoa = [['', 'Saldos em Estoque', '', '', '', '', ''],
+    ['DATA', 'CODIGO', 'DESCRICAO', 'U.M.', 'ARMZ', 'SALDO EM ESTOQUE', 'VALOR EM ESTOQUE'],
+    ...itens.map(i => [dataExcel(i.data || dataIso), i.codigo, i.descricao, i.unidade, i.armazem, num(i.saldo), num(i.valor)])];
+  baixarPlanilha(`Saldo_em_Estoque_${sufixo}.xlsx`, '1-Saldos em Estoque', aoa,
+    { linha1: 2, larguras: [12, 10, 48, 6, 6, 18, 18], mesclar: [{ s: { r: 0, c: 1 }, e: { r: 0, c: 6 } }], formatos: { A: FMT_DATA, G: FMT_RS } });
+}
+$('amoExportar').onchange = async () => {
+  const tipo = $('amoExportar').value; $('amoExportar').value = '';
+  const c = cicloPorId($('amoCiclo').value); if (!c || !tipo) return;
   const itens = await itensDoCiclo(c.id);
+  if (tipo === 'saldo') return exportarSaldo(c.data_ref, itens.map(i => ({ codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, armazem: i.armazem, saldo: i.saldo_sistema, valor: i.valor_total })), c.data_ref);
+  if (tipo === 'contagem') {   // 2 – Amostragem (planilha de contagem)
+    const aoa = [['DATA', 'CODIGO', 'DESCRICAO', 'U.M.', 'ARMZ', 'SALDO EM ESTOQUE', 'CONT. AMOSTRAGEM', 'STATUS'],
+      ...itens.map(i => [dataExcel(c.data_ref), i.codigo, i.descricao, i.unidade, i.armazem, num(i.saldo_sistema), num(i.conferido) ?? '', statusAuto(num(i.saldo_sistema), num(i.conferido))])];
+    return baixarPlanilha(`Amostragem - Contagem_${c.data_ref}.xlsx`, 'Planilha1', aoa,
+      { linha1: 1, larguras: [12, 10, 48, 6, 6, 18, 18, 16], formula: { col: 'H', a: 'F', b: 'G' }, formatos: { A: FMT_DATA } });
+  }
+  if (tipo === 'ajustada') {   // 3 – Contagem por Amostragem – Trimestral (preenchida)
+    const aoa = [['CODIGO', 'DESCRICAO', 'U.M.', 'ARMZ', 'SALDO EM ESTOQUE', 'CONT. AMOSTRAGEM', 'STATUS'],
+      ...itens.map(i => [i.codigo, i.descricao, i.unidade, i.armazem, num(i.saldo_sistema), num(i.conferido) ?? '', statusAuto(num(i.saldo_sistema), num(i.conferido))])];
+    return baixarPlanilha(`Contagem por Amostragem - Trimestral_${c.data_ref}.xlsx`, 'Planilha1', aoa,
+      { linha1: 1, larguras: [10, 48, 6, 6, 18, 18, 16], formula: { col: 'G', a: 'E', b: 'F' } });
+  }
   exportar(`Amostragem_${c.data_ref}`, itens.map(i => ({ 'Data': fD(c.data_ref), 'Código': i.codigo, 'Descrição': i.descricao, 'Unidade': i.unidade, 'Armazém': i.armazem,
     'Saldo em Estoque': num(i.saldo_sistema), 'Amostra Conferida': num(i.conferido), 'Divergência': num(i.divergencia), 'Status': i.status, 'Dado Identificado': i.tipo,
     'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total) })));
+};
+
+/* ---------- importar contagem (arquivos 2 e 3) ---------- */
+let planoCont = null;
+$('amoImportCont').onclick = () => {
+  planoCont = null; $('cArquivo').value = ''; $('cSubst').checked = true;
+  $('cPrevia').classList.add('hide'); $('cOk').disabled = true; $('mCont').classList.remove('hide');
+};
+$('cCancelar').onclick = () => $('mCont').classList.add('hide');
+async function montarPlanoContagem() {
+  const f = $('cArquivo').files[0]; if (!f) return;
+  const c = cicloPorId($('amoCiclo').value);
+  const lido = await lerExcel(f);
+  if (!lido.temConferido) throw new Error('Não encontrei a coluna "CONT. AMOSTRAGEM" na planilha.');
+  const itens = await itensDoCiclo(c.id);
+  const porChave = new Map(itens.map(i => [i.codigo + '|' + (i.armazem || ''), i]));
+  const porCodigo = new Map(); itens.forEach(i => porCodigo.set(i.codigo, porCodigo.has(i.codigo) ? null : i));
+  const linhas = agrupar(lido.itens.map(i => ({ ...i, data: null }))).itens;
+  const subst = $('cSubst').checked;
+  const r = { gravar: [], vazias: 0, fora: [], saldoDif: [], jaConf: 0, iguais: 0 };
+  for (const l of linhas) {
+    const it = porChave.get(l.codigo + '|' + (l.armazem || '')) || porCodigo.get(l.codigo);
+    if (!it) { r.fora.push(l.codigo); continue; }
+    if (l.conferido == null) { r.vazias++; continue; }
+    if (Math.abs((l.saldo ?? 0) - num(it.saldo_sistema)) > 1e-9) r.saldoDif.push(`${l.codigo} (planilha ${fN(l.saldo)} × sistema ${fN(it.saldo_sistema)})`);
+    if (it.conferido != null) {
+      if (num(it.conferido) === l.conferido) { r.iguais++; continue; }
+      r.jaConf++; if (!subst) continue;
+    }
+    r.gravar.push({ id: it.id, conferido: l.conferido });
+  }
+  const semNaPlanilha = itens.length - linhas.filter(l => porChave.get(l.codigo + '|' + (l.armazem || '')) || porCodigo.get(l.codigo)).length;
+  planoCont = { ciclo: c, ...r };
+  $('cPrevia').textContent = [
+    `Ciclo ${fD(c.data_ref)} — ${linhas.length} linha(s) na planilha.`,
+    `✔ ${r.gravar.length} contagem(ns) serão gravadas.`,
+    r.iguais ? `• ${r.iguais} já estavam iguais no sistema.` : '',
+    r.vazias ? `• ${r.vazias} linha(s) sem contagem (continuam pendentes).` : '',
+    r.jaConf ? `• ${r.jaConf} item(ns) já tinham outra contagem ${subst ? '(serão substituídos)' : '(mantidos — opção de substituir desmarcada)'}.` : '',
+    semNaPlanilha > 0 ? `• ${semNaPlanilha} item(ns) do ciclo não estão na planilha.` : '',
+    r.fora.length ? `⚠ ${r.fora.length} código(s) não existem neste ciclo e serão ignorados: ${r.fora.slice(0, 8).join(', ')}${r.fora.length > 8 ? '…' : ''}` : '',
+    r.saldoDif.length ? `⚠ ${r.saldoDif.length} item(ns) com SALDO diferente do ciclo (outra extração?): ${r.saldoDif.slice(0, 5).join('; ')}${r.saldoDif.length > 5 ? '…' : ''}` : ''
+  ].filter(Boolean).join('\n');
+  $('cPrevia').classList.remove('hide'); $('cOk').disabled = !r.gravar.length;
+}
+$('cArquivo').onchange = async () => { try { carregando(true); await montarPlanoContagem(); } catch (e) { falha(e); $('cOk').disabled = true; } finally { carregando(false); } };
+$('cSubst').onchange = async () => { if ($('cArquivo').files[0]) { try { carregando(true); await montarPlanoContagem(); } catch (e) { falha(e); } finally { carregando(false); } } };
+$('cOk').onclick = async () => {
+  if (!planoCont || !planoCont.gravar.length) return;
+  try {
+    carregando(true);
+    let total = 0;
+    for (let i = 0; i < planoCont.gravar.length; i += 500) {
+      const n = await ok(sb.rpc('importar_contagem', { p_ciclo: planoCont.ciclo.id, p_itens: planoCont.gravar.slice(i, i + 500) }));
+      total += Number(n) || 0;
+    }
+    $('mCont').classList.add('hide');
+    await itensDoCiclo(planoCont.ciclo.id, true);
+    toast(`${total} contagem(ns) importada(s).`);
+    abrirAba('amostragem');
+  } catch (e) { falha(e); carregando(false); }
 };
 
 /* ---------- novo ciclo (importação) ---------- */
@@ -637,7 +761,8 @@ $('nArquivo').onchange = async () => {
     if (lidoNovo.temConferido && datas.length) $('nHist').checked = true;
     $('nPrevia').textContent = `Aba "${lidoNovo.aba}": ${lidoNovo.itens.length} linhas encontradas.` +
       (datas.length ? `\nDatas na planilha: ${datas.map(fD).join(', ')}` : '') +
-      (lidoNovo.temConferido ? '\nA planilha já tem a coluna de conferência.' : '');
+      (lidoNovo.temConferido ? '\nA planilha já tem a coluna de conferência.' : '') +
+      (!lidoNovo.temValor ? '\n⚠ Esta planilha não tem a coluna VALOR EM ESTOQUE: o ciclo ficará sem valores (R$). Para criar o ciclo use o arquivo "Saldo em Estoque"; a contagem é importada depois em "Importar contagem".' : '');
     $('nPrevia').classList.remove('hide'); $('nOk').disabled = !lidoNovo.itens.length;
   } catch (e) { falha(e); $('nOk').disabled = true; } finally { carregando(false); }
 };
@@ -880,8 +1005,10 @@ $('hojeExcluir').onclick = async () => {
   try { carregando(true); await ok(sb.from('estoque_hoje').delete().eq('data_ref', d)); $('hojeData').value = ''; toast('Importação excluída.'); abrirAba('hoje'); }
   catch (e) { falha(e); carregando(false); }
 };
-$('hojeExport').onclick = () => exportar('Dados_Estoque_Hoje', filtraBusca(hoje, $('hojeBusca').value).map(e => ({ 'CODIGO': e.codigo, 'DESCRICAO': e.descricao, 'U.M.': e.unidade,
-  'ARMZ': e.armazem, 'SALDO EM ESTOQUE': num(e.saldo), 'VALOR EM ESTOQUE': num(e.valor_total), 'DATA': fD(e.data_ref) })));
+$('hojeExport').onclick = () => {
+  const lista = filtraBusca(hoje, $('hojeBusca').value); if (!lista.length) return toast('Nada para exportar.');
+  exportarSaldo($('hojeData').value, lista.map(e => ({ data: e.data_ref, codigo: e.codigo, descricao: e.descricao, unidade: e.unidade, armazem: e.armazem, saldo: e.saldo, valor: e.valor_total })), $('hojeData').value);
+};
 
 /* =====================================================================
    DASHBOARD
