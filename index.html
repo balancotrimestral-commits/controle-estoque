@@ -40,7 +40,7 @@
   nav{display:flex;gap:2px;background:#fff;border-bottom:1px solid var(--borda);padding:0 12px;overflow-x:auto}
   nav button{border:0;border-bottom:3px solid transparent;border-radius:0;padding:12px 14px;white-space:nowrap;color:var(--mut);background:none}
   nav button.ativo{color:var(--azul);border-bottom-color:var(--azul);font-weight:600}
-  main{padding:16px 18px 40px;max-width:1500px;margin:0 auto}
+  main{padding:16px 18px 40px;max-width:none;margin:0}
   .barra{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
   .barra .esp{flex:1}
   .dica{color:var(--mut);font-size:13px;margin:-4px 0 12px}
@@ -48,6 +48,10 @@
   .chip{background:#fff;border:1px solid var(--borda);border-radius:8px;padding:8px 12px;min-width:110px}
   .chip small{display:block;color:var(--mut);font-size:12px}
   .chip b{font-size:18px}
+  .setas{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:0 0 6px}
+  .setas span{font-size:12px;color:var(--mut);margin-right:4px}
+  .setas button{padding:5px 14px;font-size:15px;line-height:1;background:var(--azul);color:#fff;border-color:var(--azul)}
+  .setas button:hover:not(:disabled){background:var(--azul2)}
   .tabela{background:#fff;border:1px solid var(--borda);border-radius:8px;overflow:auto;max-height:68vh}
   table{border-collapse:collapse;width:100%;font-size:13px}
   th{position:sticky;top:0;background:#E9EEF4;text-align:left;padding:8px;border-bottom:1px solid var(--borda);white-space:nowrap;z-index:1}
@@ -1466,6 +1470,29 @@ $('dashPptx').onclick = async () => {
     toast(`Apresentação gerada: ${nome}` + (faltam ? ` (${faltam} imagem(ns) não encontrada(s) na pasta apresentacao/)` : ''), !!faltam);
   } catch (e) { falha(e); } finally { carregando(false); }
 };
+
+/* ---------- setas para rolar as colunas das tabelas ---------- */
+function ligarSetas(t) {
+  if (t._setas) return;
+  const bar = document.createElement('div'); bar.className = 'setas hide';
+  bar.innerHTML = '<span>Mais colunas</span><button type="button" title="Ver colunas à esquerda" aria-label="Ver colunas à esquerda">◀</button><button type="button" title="Ver colunas à direita" aria-label="Ver colunas à direita">▶</button>';
+  t.parentNode.insertBefore(bar, t); t._setas = bar;
+  const [esq, dir] = bar.querySelectorAll('button');
+  const passo = () => Math.max(300, t.clientWidth * 0.6);
+  esq.onclick = () => t.scrollBy({ left: -passo(), behavior: 'smooth' });
+  dir.onclick = () => t.scrollBy({ left: passo(), behavior: 'smooth' });
+  t.addEventListener('scroll', () => atualizarSetas(t));
+}
+function atualizarSetas(t) {
+  const bar = t._setas; if (!bar) return;
+  const max = t.scrollWidth - t.clientWidth;
+  bar.classList.toggle('hide', max <= 4);
+  const [esq, dir] = bar.querySelectorAll('button');
+  esq.disabled = t.scrollLeft <= 2; dir.disabled = t.scrollLeft >= max - 2;
+}
+const revisarSetas = () => document.querySelectorAll('.tabela').forEach(t => { ligarSetas(t); atualizarSetas(t); });
+new MutationObserver(revisarSetas).observe(document.querySelector('main'), { childList: true, subtree: true });
+window.addEventListener('resize', revisarSetas);
 
 iniciar();
 </script>
