@@ -911,7 +911,7 @@ async function desenharDashboard() {
     : `${varAcur >= 0 ? '▲ +' : '▼ '}${nf.format(+varAcur.toFixed(2))} p.p. vs ciclo anterior`;
   $('dashKpis').innerHTML = `
     <div class="kpi"><small>Itens analisados</small><b>${fN(t.total)}</b><span>total do período</span></div>
-    <div class="kpi"><small>Valor em estoque</small><b>${fR(num(r.valor_ajustado))}</b><span>após os ajustes</span></div>
+    <div class="kpi"><small>Valor em estoque</small><b>${fR(num(r.valor_ajustado))}</b><span>${r.oficial ? 'valor oficial do ciclo' : 'após os ajustes'}</span></div>
     <div class="kpi"><small>Acuracidade (Certo)</small><b style="color:var(--verde)">${fP(t.acur)}</b><span>${fN(t.q['Certo'])} itens · ${txtVar}</span></div>
     <div class="kpi"><small>Desvios totais</small><b>${fP(t.total ? t.desvios / t.total : null)}</b><span>${fN(t.desvios)} itens inconsistentes</span></div>
     <div class="kpi"><small>Baixa</small><b style="color:var(--verm)">${fP(pc('Baixa'))}</b><span>${fN(t.q['Baixa'])} itens</span></div>
