@@ -25,6 +25,11 @@
   .cartao p{margin:0 0 18px;color:var(--mut)}
   .cartao label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
   .cartao input{width:100%}
+  .campoSenha{position:relative}
+  .campoSenha input{padding-right:42px}
+  .olho{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:0;background:none;padding:6px;color:var(--mut);display:flex;width:auto!important;margin:0!important}
+  .olho:hover{color:var(--azul)}
+  .olho svg{width:20px;height:20px}
   .cartao button{width:100%;margin-top:18px;padding:10px}
   .erro{color:var(--verm);font-size:13px;margin-top:10px;min-height:18px}
   /* app */
@@ -100,10 +105,16 @@
     <h1>Controle de Estoque</h1>
     <p>Conferência e inventário</p>
     <div id="avisoConfig" class="aviso hide">Sistema ainda não configurado: preencha SUPABASE_URL e SUPABASE_KEY no início do arquivo index.html.</div>
-    <label for="email">E-mail</label>
-    <input id="email" type="email" autocomplete="username" required>
+    <label for="login">Usuário</label>
+    <input id="login" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="ex.: marcelo.melo" required>
     <label for="senha">Senha</label>
-    <input id="senha" type="password" autocomplete="current-password" required>
+    <div class="campoSenha">
+      <input id="senha" type="password" autocomplete="current-password" required>
+      <button type="button" class="olho" id="btnOlho" aria-label="Mostrar senha" title="Mostrar senha">
+        <svg id="olhoAberto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg id="olhoFechado" class="hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19c-6.5 0-10-7-10-7a18 18 0 0 1 4.1-5.1M9.9 5.2A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2"/><path d="M2 2l20 20"/></svg>
+      </button>
+    </div>
     <button class="pri" type="submit">Entrar</button>
     <div class="erro" id="erroLogin"></div>
   </form>
@@ -440,21 +451,36 @@ async function iniciar() {
 $('formLogin').addEventListener('submit', async e => {
   e.preventDefault(); $('erroLogin').textContent = '';
   if (!sb) return;
+  const usuario = $('login').value.trim().toLowerCase();
+  if (usuario.includes('@')) { $('erroLogin').textContent = 'Digite apenas o usuário, sem o @ e o domínio (ex.: marcelo.melo).'; return; }
   carregando(true);
-  const { data, error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('senha').value });
-  carregando(false);
-  if (error) { $('erroLogin').textContent = /Invalid login/i.test(error.message) ? 'E-mail ou senha incorretos.' : error.message; return; }
-  entrar(data.session);
+  try {
+    const { data: email, error: e1 } = await sb.rpc('email_do_usuario', { p_usuario: usuario });
+    if (e1) throw e1;
+    if (!email) { $('erroLogin').textContent = 'Usuário ou senha incorretos.'; return; }
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: $('senha').value });
+    if (error) { $('erroLogin').textContent = /Invalid login/i.test(error.message) ? 'Usuário ou senha incorretos.' : error.message; return; }
+    entrar(data.session);
+  } catch (err) {
+    $('erroLogin').textContent = /Failed to fetch/i.test(err.message) ? 'Sem conexão com o servidor.' : err.message;
+  } finally { carregando(false); }
 });
+$('btnOlho').onclick = () => {
+  const s = $('senha'), mostrar = s.type === 'password';
+  s.type = mostrar ? 'text' : 'password';
+  $('olhoAberto').classList.toggle('hide', mostrar); $('olhoFechado').classList.toggle('hide', !mostrar);
+  $('btnOlho').title = $('btnOlho').ariaLabel = mostrar ? 'Ocultar senha' : 'Mostrar senha';
+  s.focus();
+};
 async function entrar(sessao) {
-  usuarioEmail = sessao.user.email; $('usuario').textContent = usuarioEmail;
+  usuarioEmail = sessao.user.email; $('usuario').textContent = usuarioEmail.split('@')[0];
   $('telaLogin').classList.add('hide'); $('telaApp').classList.remove('hide');
   await carregarCiclos();
   abrirAba('amostragem');
 }
 async function sair(jaSaiu) {
   if (!jaSaiu && sb) await sb.auth.signOut();
-  $('telaApp').classList.add('hide'); $('telaLogin').classList.remove('hide'); $('senha').value = '';
+  $('telaApp').classList.add('hide'); $('telaLogin').classList.remove('hide'); $('senha').value = ''; $('senha').type = 'password'; $('olhoAberto').classList.remove('hide'); $('olhoFechado').classList.add('hide');
 }
 $('btnSair').onclick = () => sair(false);
 
