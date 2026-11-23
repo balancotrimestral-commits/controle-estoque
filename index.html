@@ -58,6 +58,12 @@
   td input{width:96px;padding:4px 6px;text-align:right}
   td input.txt{width:180px;text-align:left}
   td select{padding:4px 6px}
+  .btnOk{background:var(--verde);border-color:var(--verde);color:#fff;padding:4px 10px;font-size:12px}
+  .btnOk:hover{background:#17663D;border-color:#17663D}
+  .btnDesf{padding:3px 8px;font-size:11px;color:var(--mut)}
+  .finalizado{color:var(--verde);font-weight:600;font-size:12px;margin-right:6px}
+  tr.conf td{background:#F3FAF5}
+  select.sug{color:var(--mut);font-style:italic}
   .tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600}
   .t-Certo,.t-Correto{background:var(--verdeBg);color:var(--verde)}
   .t-Divergente,.t-Baixa{background:var(--vermBg);color:var(--verm)}
@@ -150,6 +156,7 @@
         <span class="esp"></span>
         <button class="pri" id="amoNovo">+ Novo ciclo (importar Saldo em Estoque)</button>
         <button id="amoImportCont">Importar contagem (Excel)</button>
+        <button id="amoConfCorretos" title="Confirma de uma vez todos os itens com contagem igual ao saldo">✔ Confirmar todos os Corretos</button>
         <button id="amoEnviar">Enviar para Inventário ➜</button>
         <select id="amoExportar" aria-label="Exportar">
           <option value="">Exportar Excel…</option>
@@ -160,12 +167,13 @@
         </select>
         <button class="perigo" id="amoExcluir">Excluir ciclo</button>
       </div>
-      <p class="dica">Digite a contagem física em <b>Amostra Conferida</b>. Divergência, Status e Dado Identificado são calculados na hora. Enter pula para o próximo item.</p>
+      <p class="dica">Digite a contagem em <b>Amostra Conferida</b> (Enter pula para o próximo). Confira o <b>Dado Identificado</b>, escolha o <b>Ajuste</b> (Correto, Baixa, Baixa 24 Horas ou Falha Protheus) e clique em <b>✔ Confirmar</b> para finalizar a linha.</p>
       <div class="chips" id="amoChips"></div>
       <div class="barra">
         <input id="amoBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
         <select id="amoFiltro">
-          <option value="">Todos</option><option value="pend">Pendentes</option>
+          <option value="">Todos</option><option value="pend">Pendentes de contagem</option>
+          <option value="naoconf">Não confirmados (Ajuste)</option><option value="confirmados">Confirmados</option>
           <option value="Correto">Correto</option><option value="Divergente">Divergente</option>
         </select>
       </div>
@@ -565,7 +573,7 @@ async function desenharAmostragem() {
   const itens = c ? await itensDoCiclo(c.id) : [];
   const editavel = c && c.status === 'conferencia';
   $('amoStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
-  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel;
+  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoConfCorretos').disabled = !editavel;
   const conf = itens.filter(i => i.conferido !== null);
   const corr = conf.filter(i => i.status === 'Correto').length;
   $('amoChips').innerHTML = c ? `
@@ -574,22 +582,35 @@ async function desenharAmostragem() {
     <div class="chip"><small>Pendentes</small><b>${fN(itens.length - conf.length)}</b></div>
     <div class="chip"><small>Corretos</small><b style="color:var(--verde)">${fN(corr)}</b></div>
     <div class="chip"><small>Divergentes</small><b style="color:var(--verm)">${fN(conf.length - corr)}</b></div>
-    <div class="chip"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>` : '';
+    <div class="chip"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>
+    <div class="chip"><small>Ajustes confirmados</small><b style="color:var(--verde)">${fN(itens.filter(i => i.ajuste).length)}</b> <small style="display:inline">de ${fN(itens.length)}</small></div>` : '';
   let lista = filtraBusca(itens, $('amoBusca').value);
   const f = $('amoFiltro').value;
   if (f === 'pend') lista = lista.filter(i => i.conferido === null);
+  else if (f === 'naoconf') lista = lista.filter(i => !i.ajuste);
+  else if (f === 'confirmados') lista = lista.filter(i => i.ajuste);
   else if (f) lista = lista.filter(i => i.status === f);
   if (!c) { $('amoTabela').innerHTML = '<div class="vazio">Crie um ciclo importando a planilha do sistema.</div>'; return; }
   if (!lista.length) { $('amoTabela').innerHTML = '<div class="vazio">Nenhum item.</div>'; return; }
   $('amoTabela').innerHTML = `<table><thead><tr><th class="opc">Data</th><th>Código</th><th>Descrição</th><th class="opc">Unidade</th><th class="opc">Armazém</th>
-    <th class="n">Saldo em Estoque</th><th class="n">Amostra Conferida</th><th class="n">Divergência</th><th>Status</th><th>Dado Identificado</th>
+    <th class="n">Saldo em Estoque</th><th class="n">Amostra Conferida</th><th class="n">Divergência</th><th>Status</th><th>Dado Identificado</th><th>Ajuste</th><th>Confirmação</th>
     <th class="n opc">Valor Unitário</th><th class="n opc">Valor Total</th></tr></thead><tbody>${lista.map(i => linhaAmostragem(i, c, editavel)).join('')}</tbody></table>`;
 }
+const rotuloAj = a => a === 'Certo' ? 'Correto' : a;   // na Amostragem "Certo" aparece como "Correto"
+function celulasAjuste(i, editavel) {
+  if (!editavel) return `<td>${i.ajuste ? tag(rotuloAj(i.ajuste)).replace('t-Correto', 't-Certo') : ''}</td><td></td>`;
+  if (i.ajuste) return `<td>${tag(rotuloAj(i.ajuste)).replace('t-Correto', 't-Certo')}</td>
+    <td><span class="finalizado">✔ Finalizado</span><button class="btnDesf" data-id="${i.id}" title="Desfazer a confirmação para alterar">Desfazer</button></td>`;
+  const sem = i.conferido === null;
+  return `<td><select class="amoAj ${!i.ajuste ? 'sug' : ''}" data-id="${i.id}" ${sem ? 'disabled' : ''} aria-label="Ajuste ${esc(i.codigo)}">
+      ${sem ? '<option value="">—</option>' : ''}${AJUSTES.map(a => `<option value="${a}" ${a === i.tipo ? 'selected' : ''}>${rotuloAj(a)}</option>`).join('')}</select></td>
+    <td><button class="btnOk" data-id="${i.id}" ${sem ? 'disabled title="Informe a contagem primeiro"' : ''}>✔ Confirmar</button></td>`;
+}
 function linhaAmostragem(i, c, editavel) {
-  return `<tr data-id="${i.id}"><td class="opc">${fD(c.data_ref)}</td><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="opc">${esc(i.unidade)}</td><td class="opc">${esc(i.armazem)}</td>
+  return `<tr data-id="${i.id}" class="${i.ajuste && editavel ? 'conf' : ''}"><td class="opc">${fD(c.data_ref)}</td><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="opc">${esc(i.unidade)}</td><td class="opc">${esc(i.armazem)}</td>
     <td class="n">${fN(i.saldo_sistema)}</td>
-    <td class="n">${editavel ? `<input class="inpConf" inputmode="decimal" value="${i.conferido ?? ''}" data-id="${i.id}" aria-label="Amostra conferida ${esc(i.codigo)}">` : fN(i.conferido)}</td>
-    <td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.status)}</td><td>${tag(i.tipo)}</td>
+    <td class="n">${editavel && !i.ajuste ? `<input class="inpConf" inputmode="decimal" value="${i.conferido ?? ''}" data-id="${i.id}" aria-label="Amostra conferida ${esc(i.codigo)}">` : fN(i.conferido)}</td>
+    <td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.status)}</td><td>${tag(i.tipo)}</td>${celulasAjuste(i, editavel)}
     <td class="n opc">${fR(num(i.valor_unit))}</td><td class="n opc">${fR(num(i.valor_total))}</td></tr>`;
 }
 $('amoTabela').addEventListener('change', async e => {
@@ -607,6 +628,41 @@ $('amoTabela').addEventListener('change', async e => {
     atualizarChipsAmostragem();
   } catch (err) { falha(err); }
 });
+function trocarLinhaAmostragem(novo) {
+  const lista = cache[novo.ciclo_id]; lista[lista.findIndex(x => x.id === novo.id)] = novo;
+  const tr = document.querySelector(`#amoTabela tr[data-id="${novo.id}"]`); if (!tr) return;
+  const tmp = document.createElement('tbody'); tmp.innerHTML = linhaAmostragem(novo, cicloPorId(novo.ciclo_id), true);
+  const nova = tmp.firstElementChild; tr.replaceWith(nova);
+  nova.classList.add('salvo'); atualizarChipsAmostragem();
+}
+$('amoTabela').addEventListener('change', e => { const s = e.target.closest('.amoAj'); if (s) s.classList.remove('sug'); });
+$('amoTabela').addEventListener('click', async e => {
+  const ok1 = e.target.closest('.btnOk'), desf = e.target.closest('.btnDesf');
+  if (!ok1 && !desf) return;
+  const id = Number((ok1 || desf).dataset.id);
+  const it = Object.values(cache).flat().find(x => x.id === id); if (!it) return;
+  try {
+    (ok1 || desf).disabled = true;
+    let campos;
+    if (ok1) {
+      const aj = document.querySelector(`#amoTabela .amoAj[data-id="${id}"]`).value;
+      if (!aj) return toast('Escolha o Ajuste.', true);
+      campos = { ajuste: aj, saldo_ajustado: num(it.conferido) };
+    } else campos = { ajuste: null, saldo_ajustado: null };
+    trocarLinhaAmostragem(await ok(sb.from('itens').update(campos).eq('id', id).select().single()));
+  } catch (err) { falha(err); (ok1 || desf).disabled = false; }
+});
+$('amoConfCorretos').onclick = async () => {
+  const c = cicloPorId($('amoCiclo').value); if (!c) return;
+  const n = (await itensDoCiclo(c.id)).filter(i => i.status === 'Correto' && !i.ajuste).length;
+  if (!n) return toast('Não há itens corretos para confirmar.');
+  if (!confirm(`Confirmar de uma vez os ${n} itens com contagem igual ao saldo (Ajuste = Correto)?`)) return;
+  try {
+    carregando(true);
+    const q = await ok(sb.rpc('confirmar_corretos', { p_ciclo: c.id }));
+    await itensDoCiclo(c.id, true); toast(`${q} item(ns) confirmados como Correto.`); abrirAba('amostragem');
+  } catch (err) { falha(err); carregando(false); }
+};
 $('amoTabela').addEventListener('keydown', e => {
   if (e.key !== 'Enter' || !e.target.classList.contains('inpConf')) return;
   e.preventDefault();
@@ -618,12 +674,15 @@ function atualizarChipsAmostragem() {
   const c = cicloPorId($('amoCiclo').value); const itens = cache[c.id] || [];
   const conf = itens.filter(i => i.conferido !== null); const corr = conf.filter(i => i.status === 'Correto').length;
   const b = $('amoChips').querySelectorAll('b');
-  if (b.length === 6) { b[1].textContent = fN(conf.length); b[2].textContent = fN(itens.length - conf.length); b[3].textContent = fN(corr); b[4].textContent = fN(conf.length - corr); b[5].textContent = fP(conf.length ? corr / conf.length : null); }
+  if (b.length === 7) { b[1].textContent = fN(conf.length); b[2].textContent = fN(itens.length - conf.length); b[3].textContent = fN(corr); b[4].textContent = fN(conf.length - corr); b[5].textContent = fP(conf.length ? corr / conf.length : null); b[6].textContent = fN(itens.filter(i => i.ajuste).length); }
 }
 $('amoEnviar').onclick = async () => {
   const c = cicloPorId($('amoCiclo').value); if (!c) return;
   const itens = await itensDoCiclo(c.id); const pend = itens.filter(i => i.conferido === null).length;
-  const msg = pend ? `Ainda há ${pend} item(ns) sem contagem. Eles irão para o inventário sem conferência (o saldo do sistema é mantido).\n\nEnviar mesmo assim?` : 'Enviar a conferência para Inventário / Dados Inventário?';
+  const naoConf = itens.filter(i => i.conferido !== null && !i.ajuste).length;
+  const msg = (pend ? `Ainda há ${pend} item(ns) sem contagem (o saldo do sistema é mantido).\n` : '') +
+    (naoConf ? `${naoConf} item(ns) ainda sem Ajuste confirmado: receberão o Dado Identificado como Ajuste (pode alterar em Dados Inventário).\n` : '') +
+    ((pend || naoConf) ? '\nEnviar mesmo assim?' : 'Todos os itens estão confirmados. Enviar para Inventário / Dados Inventário?');
   if (!confirm(msg)) return;
   try {
     carregando(true);
@@ -714,6 +773,7 @@ async function montarPlanoContagem() {
     if (!it) { r.fora.push(l.codigo); continue; }
     if (l.conferido == null) { r.vazias++; continue; }
     if (Math.abs((l.saldo ?? 0) - num(it.saldo_sistema)) > 1e-9) r.saldoDif.push(`${l.codigo} (planilha ${fN(l.saldo)} × sistema ${fN(it.saldo_sistema)})`);
+    if (it.ajuste) { r.confirmados = (r.confirmados || 0) + 1; continue; }
     if (it.conferido != null) {
       if (num(it.conferido) === l.conferido) { r.iguais++; continue; }
       r.jaConf++; if (!subst) continue;
@@ -726,6 +786,7 @@ async function montarPlanoContagem() {
     `Ciclo ${fD(c.data_ref)} — ${linhas.length} linha(s) na planilha.`,
     `✔ ${r.gravar.length} contagem(ns) serão gravadas.`,
     r.iguais ? `• ${r.iguais} já estavam iguais no sistema.` : '',
+    r.confirmados ? `• ${r.confirmados} item(ns) já finalizados (Ajuste confirmado) foram mantidos.` : '',
     r.vazias ? `• ${r.vazias} linha(s) sem contagem (continuam pendentes).` : '',
     r.jaConf ? `• ${r.jaConf} item(ns) já tinham outra contagem ${subst ? '(serão substituídos)' : '(mantidos — opção de substituir desmarcada)'}.` : '',
     semNaPlanilha > 0 ? `• ${semNaPlanilha} item(ns) do ciclo não estão na planilha.` : '',
