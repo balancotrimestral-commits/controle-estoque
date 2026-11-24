@@ -73,6 +73,7 @@
   .t-Divergente,.t-Baixa{background:var(--vermBg);color:var(--verm)}
   .t-Baixa24{background:var(--amarBg);color:var(--amar)}
   .t-Falha{background:var(--roxoBg);color:var(--roxo)}
+  .t-Fora{background:#E5E7EB;color:#374151}
   .t-conferencia{background:var(--amarBg);color:var(--amar)}
   .t-correcao{background:var(--roxoBg);color:var(--roxo)}
   .t-fechado{background:var(--verdeBg);color:var(--verde)}
@@ -216,7 +217,7 @@
         <select id="diFiltro">
           <option value="div">Somente divergentes</option><option value="">Todos</option>
           <option value="Certo">Ajuste: Certo</option><option value="Baixa">Ajuste: Baixa</option>
-          <option value="Baixa 24 Horas">Ajuste: Baixa 24 Horas</option><option value="Falha Protheus">Ajuste: Falha Protheus</option>
+          <option value="Baixa 24 Horas">Ajuste: Baixa 24 Horas</option><option value="Falha Protheus">Ajuste: Falha Protheus</option><option value="Fora do Centro de Custo">Ajuste: Fora do Centro de Custo</option>
         </select>
       </div>
       <div class="tabela" id="diTabela"></div>
@@ -269,7 +270,8 @@
       </div>
       <div class="painel" style="margin-bottom:12px"><h3>Comparativo geral por ciclo</h3><div class="tabela" id="dashTabela" style="max-height:none"></div></div>
       <div class="painel" style="margin-bottom:12px"><h3>Classificação por ciclo</h3><canvas id="gComp"></canvas></div>
-      <div class="painel"><h3>10 maiores ajustes do ciclo (R$)</h3><div class="tabela" id="dashTop" style="max-height:none"></div></div>
+      <div class="painel" style="margin-bottom:12px"><h3>10 maiores ajustes do ciclo (R$)</h3><div class="tabela" id="dashTop" style="max-height:none"></div></div>
+      <div class="painel" style="border-left:4px solid #6B7280;border-radius:0 8px 8px 0"><div class="barra" style="margin-bottom:6px"><h3 style="margin:0">Itens fora do centro de custo (somente consulta – não entram no inventário nem na apresentação)</h3><span class="esp"></span><button id="dashForaRel">Emitir relatório (Excel)</button></div><div id="dashFora"></div></div>
     </section>
   </main>
 </div>
@@ -333,7 +335,8 @@ const SUPABASE_KEY = 'sb_publishable_PH1bNp4yYvhxJaO_YLDIiQ_CoN2o2sC';
 
 /* ===================================================================== */
 const $ = id => document.getElementById(id);
-const AJUSTES = ['Certo', 'Baixa', 'Baixa 24 Horas', 'Falha Protheus'];
+const FORA_CC = 'Fora do Centro de Custo';
+const AJUSTES = ['Certo', 'Baixa', 'Baixa 24 Horas', 'Falha Protheus', FORA_CC];
 const STATUS_CICLO = { conferencia: 'Pendente – contagem', correcao: 'Pendente – correção', fechado: 'Finalizado' };
 const NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const mesCiclo = c => `${NOMES_MES[+c.data_ref.slice(5, 7) - 1]}/${c.data_ref.slice(0, 4)}`;
@@ -351,7 +354,7 @@ const fR = v => v === null || v === undefined || v === '' || isNaN(v) ? '' : rf.
 const fP = v => v === null || v === undefined || !isFinite(v) ? '–' : pf.format(v);
 const fD = iso => iso ? iso.slice(0, 10).split('-').reverse().join('/') : '';
 const num = v => v === null || v === undefined || v === '' ? null : Number(v);
-const classeTag = t => ({ 'Baixa 24 Horas': 'Baixa24', 'Falha Protheus': 'Falha' }[t] || t);
+const classeTag = t => ({ 'Baixa 24 Horas': 'Baixa24', 'Falha Protheus': 'Falha', 'Fora do Centro de Custo': 'Fora' }[t] || t);
 const tag = t => t ? `<span class="tag t-${classeTag(t)}">${esc(t)}</span>` : '';
 const sinal = v => v === null || v === undefined ? '' : `<span class="${v < 0 ? 'neg' : v > 0 ? 'pos' : ''}">${v > 0 ? '+' : ''}${fN(v)}</span>`;
 const nomeCiclo = c => `${mesCiclo(c)} (${fD(c.data_ref)}) — ${STATUS_CICLO[c.status]}`;
@@ -945,7 +948,7 @@ async function desenharDadosInv() {
   $('diFechar').classList.toggle('hide', !editavel); $('diVoltar').classList.toggle('hide', !editavel);
   $('diReabrir').classList.toggle('hide', !(c && c.status === 'fechado')); $('diExport').disabled = !c;
   const cont = a => itens.filter(i => (i.ajuste || i.tipo) === a).length;
-  const impacto = itens.reduce((s, i) => s + (num(i.divergencia) || 0) * (num(i.valor_unit) || 0), 0);
+  const impacto = itens.filter(i => i.ajuste !== FORA_CC).reduce((s, i) => s + (num(i.divergencia) || 0) * (num(i.valor_unit) || 0), 0);
   $('diChips').innerHTML = c ? `
     <div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
     <div class="chip"><small>Divergentes</small><b>${fN(itens.filter(i => i.status === 'Divergente').length)}</b></div>
@@ -1156,13 +1159,36 @@ async function desenharDashboard() {
       <td class="n">${fN(z.q['Baixa'])}${p('Baixa')}</td><td class="n">${fN(z.q['Baixa 24 Horas'])}${p('Baixa 24 Horas')}</td><td class="n">${fN(z.q['Falha Protheus'])}${p('Falha Protheus')}</td>
       <td class="n"><b>${fP(z.acur)}</b></td><td class="n">${fP(z.total ? z.desvios / z.total : null)}</td></tr>`; }).join('')}</tbody></table>`;
   const itens = await itensDoCiclo(r.id);
-  const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.valor_unit != null)
+  const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.ajuste !== FORA_CC && i.valor_unit != null)
     .map(i => { const dif = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema) - num(i.saldo_sistema); return { i, dif, imp: dif * num(i.valor_unit) }; })
     .filter(x => x.dif).sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
   $('dashTop').innerHTML = top.length ? `<table><thead><tr><th>Código</th><th>Descrição</th><th class="n">Saldo sistema</th><th class="n">Saldo ajustado</th><th class="n">Ajuste (qtd)</th><th>Classificação</th><th class="n">Ajuste (R$)</th></tr></thead><tbody>
     ${top.map(({ i, dif, imp }) => `<tr><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(num(i.saldo_ajustado ?? i.conferido))}</td>
       <td class="n">${sinal(dif)}</td><td>${tag(i.ajuste)}</td><td class="n ${imp < 0 ? 'neg' : 'pos'}">${fR(imp)}</td></tr>`).join('')}</tbody></table>` : '<div class="vazio">Nenhum ajuste de quantidade neste ciclo.</div>';
+  const fora = itens.filter(i => i.ajuste === FORA_CC);
+  $('dashForaRel').disabled = !fora.length;
+  $('dashFora').innerHTML = fora.length ? `<div class="chips"><div class="chip"><small>Itens</small><b>${fN(fora.length)}</b></div>
+      <div class="chip"><small>Valor no sistema</small><b>${fR(fora.reduce((s, i) => s + (num(i.valor_total) || 0), 0))}</b></div></div>
+    <div class="tabela" style="max-height:none"><table><thead><tr><th>Código</th><th>Descrição</th><th>Unidade</th><th class="n">Saldo sistema</th><th class="n">Contado</th><th class="n">Valor no sistema (R$)</th><th>Observação</th></tr></thead><tbody>
+    ${fora.map(i => `<tr><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td>${esc(i.unidade)}</td><td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(i.conferido)}</td>
+      <td class="n">${fR(num(i.valor_total))}</td><td>${esc(i.observacao)}</td></tr>`).join('')}</tbody></table></div>`
+    : '<div class="vazio">Nenhum item marcado como fora do centro de custo neste ciclo.</div>';
 }
+$('dashForaRel').onclick = async () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r) return;
+  const fora = (await itensDoCiclo(r.id)).filter(i => i.ajuste === FORA_CC);
+  if (!fora.length) return toast('Nenhum item fora do centro de custo neste ciclo.');
+  const tot = fora.reduce((s, i) => s + (num(i.valor_total) || 0), 0);
+  const aoa = [[`Relatório – Itens fora do centro de custo – ${mesCiclo(r)}`],
+    [`Data da conferência: ${fD(r.data_ref)}   |   Itens: ${fora.length}   |   Emitido em ${new Date().toLocaleString('pt-BR')} por ${usuarioEmail.split('@')[0]}`], [],
+    ['CODIGO', 'DESCRICAO', 'U.M.', 'ARMZ', 'SALDO EM ESTOQUE', 'CONT. AMOSTRAGEM', 'VALOR UNITÁRIO', 'VALOR EM ESTOQUE', 'OBSERVAÇÃO', 'CONFERIDO POR', 'CLASSIFICADO POR'],
+    ...fora.map(i => [i.codigo, i.descricao, i.unidade, i.armazem, num(i.saldo_sistema), num(i.conferido) ?? '', num(i.valor_unit) ?? '', num(i.valor_total) ?? '', i.observacao || '',
+      (i.conferido_por || '').split('@')[0], (i.ajustado_por || '').split('@')[0]]),
+    ['TOTAL', '', '', '', '', '', '', tot, '', '', '']];
+  baixarPlanilha(`Itens_Fora_Centro_Custo_${mesCiclo(r).replace('/', '_')}.xlsx`, 'Fora do Centro de Custo', aoa,
+    { linha1: 4, larguras: [10, 48, 6, 6, 16, 18, 15, 17, 40, 16, 16], mesclar: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }],
+      formatos: { G: FMT_RS, H: FMT_RS } });
+};
 $('dashExport').onclick = () => exportar('Dashboard_Comparativo', resumo.map(x => { const z = totaisCiclo(x); return {
   'Mês conferência': fD(x.data_ref), 'Itens analisados': z.total, 'Valor em estoque (R$)': num(x.valor_ajustado),
   'Certo': z.q['Certo'], 'Baixa': z.q['Baixa'], 'Baixa 24 Horas': z.q['Baixa 24 Horas'], 'Falha Protheus': z.q['Falha Protheus'],
@@ -1458,7 +1484,7 @@ $('dashPptx').onclick = async () => {
   try {
     const anteriores = resumo.slice(0, resumo.indexOf(r)).map(x => ({ ciclo: x, t: totaisCiclo(x) }));
     const itens = await itensDoCiclo(r.id);
-    const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.valor_unit != null)
+    const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.ajuste !== FORA_CC && i.valor_unit != null)
       .map(i => { const s = num(i.saldo_sistema), aj = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema);
         return { codigo: i.codigo, descricao: i.descricao, saldo: s, ajustado: aj, dif: aj - s, ajuste: i.ajuste, imp: (aj - s) * num(i.valor_unit) }; })
       .filter(x => x.dif).sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
