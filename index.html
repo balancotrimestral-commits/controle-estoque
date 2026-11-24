@@ -74,6 +74,9 @@
   .t-Baixa24{background:var(--amarBg);color:var(--amar)}
   .t-Falha{background:var(--roxoBg);color:var(--roxo)}
   .t-Fora{background:#E5E7EB;color:#374151}
+  .btnSaldo{padding:1px 6px;font-size:12px;margin-left:6px;color:var(--azul)}
+  .corrigido{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;background:var(--amarBg);color:var(--amar);margin-left:4px;cursor:help}
+  .riscado{text-decoration:line-through;color:var(--mut);font-size:13px;margin-right:4px}
   .t-conferencia{background:var(--amarBg);color:var(--amar)}
   .t-correcao{background:var(--roxoBg);color:var(--roxo)}
   .t-fechado{background:var(--verdeBg);color:var(--verde)}
@@ -178,7 +181,7 @@
         <input id="amoBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
         <select id="amoFiltro">
           <option value="">Todos</option><option value="pend">Pendentes de contagem</option>
-          <option value="naoconf">Não confirmados (Ajuste)</option><option value="confirmados">Confirmados</option>
+          <option value="naoconf">Não confirmados (Ajuste)</option><option value="saldocorr">Saldo corrigido</option><option value="confirmados">Confirmados</option>
           <option value="Correto">Correto</option><option value="Divergente">Divergente</option>
         </select>
       </div>
@@ -289,6 +292,20 @@
     <label class="check"><input type="checkbox" id="nHist"> <span>Arquivo de histórico (já tem a coluna <b>Amostra Conferida</b> e uma <b>Data</b> por linha). Cria um ciclo por data, já fechado.</span></label>
     <div class="previa hide" id="nPrevia"></div>
     <div class="acoes"><button id="nCancelar">Cancelar</button><button class="pri" id="nOk" disabled>Importar</button></div>
+  </div>
+</div>
+
+<!-- MODAL: corrigir saldo -->
+<div class="fundoModal hide" id="mSaldo">
+  <div class="modal">
+    <h2>Corrigir Saldo em Estoque</h2>
+    <div class="previa" id="sInfo" style="margin-top:0"></div>
+    <label for="sNovo">Saldo correto</label>
+    <input type="text" id="sNovo" inputmode="decimal" style="width:100%">
+    <label for="sJust">Justificativa</label>
+    <select id="sJust" style="width:100%"><option value="">Selecione…</option><option>Falha Protheus</option><option>Falha Conferência</option></select>
+    <div class="erro" id="sErro"></div>
+    <div class="acoes"><button id="sRestaurar" class="perigo">Voltar ao saldo original</button><span style="flex:1"></span><button id="sCancelar">Cancelar</button><button class="pri" id="sOk">Salvar correção</button></div>
   </div>
 </div>
 
@@ -595,6 +612,7 @@ async function desenharAmostragem() {
   const f = $('amoFiltro').value;
   if (f === 'pend') lista = lista.filter(i => i.conferido === null);
   else if (f === 'naoconf') lista = lista.filter(i => !i.ajuste);
+  else if (f === 'saldocorr') lista = lista.filter(i => i.saldo_original != null);
   else if (f === 'confirmados') lista = lista.filter(i => i.ajuste);
   else if (f) lista = lista.filter(i => i.status === f);
   if (!c) { $('amoTabela').innerHTML = '<div class="vazio">Crie um ciclo importando a planilha do sistema.</div>'; return; }
@@ -613,9 +631,17 @@ function celulasAjuste(i, editavel) {
       ${sem ? '<option value="">—</option>' : ''}${AJUSTES.map(a => `<option value="${a}" ${a === i.tipo ? 'selected' : ''}>${rotuloAj(a)}</option>`).join('')}</select></td>
     <td><button class="btnOk" data-id="${i.id}" ${sem ? 'disabled title="Informe a contagem primeiro"' : ''}>✔ Confirmar</button></td>`;
 }
+function celulaSaldo(i, editavel) {
+  const marca = i.saldo_original != null
+    ? `<span class="riscado" title="Saldo original do sistema">${fN(i.saldo_original)}</span><span style="color:var(--mut);margin-right:4px">→</span>` : '';
+  const selo = i.saldo_original != null
+    ? `<span class="corrigido" title="Saldo original: ${fN(i.saldo_original)} · ${esc(i.saldo_justificativa)} · por ${esc((i.saldo_alterado_por || '').split('@')[0])}">${esc(i.saldo_justificativa)}</span>` : '';
+  const btn = editavel && !i.ajuste ? `<button class="btnSaldo" data-id="${i.id}" title="Corrigir saldo em estoque" aria-label="Corrigir saldo ${esc(i.codigo)}">✎</button>` : '';
+  return `<td class="n" style="white-space:nowrap">${marca}${fN(i.saldo_sistema)}${selo}${btn}</td>`;
+}
 function linhaAmostragem(i, c, editavel) {
   return `<tr data-id="${i.id}" class="${i.ajuste && editavel ? 'conf' : ''}"><td class="opc">${fD(c.data_ref)}</td><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="opc">${esc(i.unidade)}</td><td class="opc">${esc(i.armazem)}</td>
-    <td class="n">${fN(i.saldo_sistema)}</td>
+    ${celulaSaldo(i, editavel)}
     <td class="n">${editavel && !i.ajuste ? `<input class="inpConf" inputmode="decimal" value="${i.conferido ?? ''}" data-id="${i.id}" aria-label="Amostra conferida ${esc(i.codigo)}">` : fN(i.conferido)}</td>
     <td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.status)}</td><td>${tag(i.tipo)}</td>${celulasAjuste(i, editavel)}
     <td class="n opc">${fR(num(i.valor_unit))}</td><td class="n opc">${fR(num(i.valor_total))}</td></tr>`;
@@ -643,6 +669,37 @@ function trocarLinhaAmostragem(novo) {
   nova.classList.add('salvo'); atualizarChipsAmostragem();
 }
 $('amoTabela').addEventListener('change', e => { const s = e.target.closest('.amoAj'); if (s) s.classList.remove('sug'); });
+let itemSaldo = null;
+$('amoTabela').addEventListener('click', e => {
+  const b = e.target.closest('.btnSaldo'); if (!b) return;
+  itemSaldo = Object.values(cache).flat().find(x => x.id === Number(b.dataset.id)); if (!itemSaldo) return;
+  const orig = itemSaldo.saldo_original ?? itemSaldo.saldo_sistema;
+  $('sInfo').innerHTML = `<b>${esc(itemSaldo.codigo)}</b> – ${esc(itemSaldo.descricao)}<br>Saldo original do sistema: <b>${fN(orig)}</b>` +
+    (itemSaldo.saldo_original != null ? `<br>Saldo corrigido atual: <b>${fN(itemSaldo.saldo_sistema)}</b> (${esc(itemSaldo.saldo_justificativa)})` : '') +
+    (itemSaldo.conferido != null ? `<br>Amostra conferida: <b>${fN(itemSaldo.conferido)}</b>` : '');
+  $('sNovo').value = itemSaldo.saldo_original != null ? String(itemSaldo.saldo_sistema).replace('.', ',') : '';
+  $('sJust').value = itemSaldo.saldo_justificativa || '';
+  $('sErro').textContent = ''; $('sRestaurar').classList.toggle('hide', itemSaldo.saldo_original == null);
+  $('mSaldo').classList.remove('hide'); setTimeout(() => $('sNovo').focus(), 50);
+});
+$('sCancelar').onclick = () => $('mSaldo').classList.add('hide');
+async function gravarSaldo(campos) {
+  try {
+    carregando(true);
+    const novo = await ok(sb.from('itens').update(campos).eq('id', itemSaldo.id).select().single());
+    $('mSaldo').classList.add('hide'); trocarLinhaAmostragem(novo); toast('Saldo atualizado.');
+  } catch (e) { $('sErro').textContent = e.message; } finally { carregando(false); }
+}
+$('sOk').onclick = () => {
+  const v = paraNumero($('sNovo').value);
+  if (v === null || v < 0) return $('sErro').textContent = 'Informe o saldo correto (número maior ou igual a zero).';
+  const orig = num(itemSaldo.saldo_original ?? itemSaldo.saldo_sistema);
+  if (v === orig) return $('sErro').textContent = 'O valor é igual ao saldo original. Use "Voltar ao saldo original".';
+  if (!$('sJust').value) return $('sErro').textContent = 'Escolha a justificativa: Falha Protheus ou Falha Conferência.';
+  gravarSaldo({ saldo_sistema: v, saldo_justificativa: $('sJust').value });
+};
+$('sRestaurar').onclick = () => gravarSaldo({ saldo_sistema: num(itemSaldo.saldo_original), saldo_justificativa: null });
+$('sNovo').addEventListener('keydown', e => { if (e.key === 'Enter') $('sOk').click(); });
 $('amoTabela').addEventListener('click', async e => {
   const ok1 = e.target.closest('.btnOk'), desf = e.target.closest('.btnDesf');
   if (!ok1 && !desf) return;
@@ -753,8 +810,9 @@ $('amoExportar').onchange = async () => {
       { linha1: 1, larguras: [10, 48, 6, 6, 18, 18, 16], formula: { col: 'G', a: 'E', b: 'F' } });
   }
   exportar(`Amostragem_${c.data_ref}`, itens.map(i => ({ 'Data': fD(c.data_ref), 'Código': i.codigo, 'Descrição': i.descricao, 'Unidade': i.unidade, 'Armazém': i.armazem,
-    'Saldo em Estoque': num(i.saldo_sistema), 'Amostra Conferida': num(i.conferido), 'Divergência': num(i.divergencia), 'Status': i.status, 'Dado Identificado': i.tipo,
-    'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total) })));
+    'Saldo original (sistema)': num(i.saldo_original ?? i.saldo_sistema), 'Saldo em Estoque': num(i.saldo_sistema), 'Justificativa do saldo': i.saldo_justificativa || '',
+    'Amostra Conferida': num(i.conferido), 'Divergência': num(i.divergencia), 'Status': i.status, 'Dado Identificado': i.tipo, 'Ajuste': i.ajuste || '',
+    'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total), 'Saldo corrigido por': (i.saldo_alterado_por || '').split('@')[0] })));
 };
 
 /* ---------- importar contagem (arquivos 2 e 3) ---------- */
@@ -969,7 +1027,7 @@ function linhaDI(i, ed) {
   const aj = i.ajuste || i.tipo;
   const avisoAj = i.status === 'Divergente' && aj === 'Certo' ? ' title="Item com diferença classificado como Certo"' : '';
   return `<tr data-id="${i.id}"><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td>${esc(i.unidade)}</td>
-    <td class="n">${fN(i.saldo_sistema)}</td><td class="n">${fN(i.conferido)}</td><td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.tipo)}</td>
+    ${celulaSaldo(i, false)}<td class="n">${fN(i.conferido)}</td><td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.tipo)}</td>
     <td${avisoAj}>${ed ? `<select class="diAj" data-id="${i.id}"><option value=""></option>${AJUSTES.map(a => `<option ${a === i.ajuste ? 'selected' : ''}>${a}</option>`).join('')}</select>` : tag(aj)}</td>
     <td class="n">${ed ? `<input class="diSaldo" inputmode="decimal" data-id="${i.id}" value="${i.saldo_ajustado ?? ''}">` : fN(i.saldo_ajustado)}</td>
     <td>${ed ? `<input class="diObs txt" data-id="${i.id}" value="${esc(i.observacao ?? '')}">` : esc(i.observacao)}</td>
@@ -1007,7 +1065,8 @@ $('diReabrir').onclick = () => reabrir('correcao', 'Reabrir a correção deste c
 $('diExport').onclick = async () => {
   const c = cicloPorId($('diCiclo').value); if (!c) return;
   exportar(`Dados_Inventario_${c.data_ref}`, (await itensDoCiclo(c.id)).map(i => ({ 'Data': fD(c.data_ref), 'Código': i.codigo, 'Descrição': i.descricao, 'Unidade': i.unidade, 'Armazém': i.armazem,
-    'Saldo em Estoque': num(i.saldo_sistema), 'Conferência': num(i.conferido), 'Retirada/Inclusão': num(i.divergencia), 'Status': i.tipo, 'Ajuste': i.ajuste || i.tipo,
+    'Saldo original (sistema)': num(i.saldo_original ?? i.saldo_sistema), 'Saldo em Estoque': num(i.saldo_sistema), 'Justificativa do saldo': i.saldo_justificativa || '',
+    'Conferência': num(i.conferido), 'Retirada/Inclusão': num(i.divergencia), 'Status': i.tipo, 'Ajuste': i.ajuste || i.tipo,
     'Saldo ajustado': num(i.saldo_ajustado), 'Observação': i.observacao, 'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total),
     'Conferido por': i.conferido_por, 'Ajustado por': i.ajustado_por })));
 };
