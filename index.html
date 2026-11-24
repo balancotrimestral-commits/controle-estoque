@@ -614,16 +614,7 @@ async function desenharAmostragem() {
   const editavel = c && c.status === 'conferencia';
   $('amoStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
   $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoConfCorretos').disabled = !editavel;
-  const conf = itens.filter(i => i.conferido !== null);
-  const corr = conf.filter(i => i.status === 'Correto').length;
-  $('amoChips').innerHTML = c ? `
-    <div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
-    <div class="chip"><small>Conferidos</small><b>${fN(conf.length)}</b></div>
-    <div class="chip"><small>Pendentes</small><b>${fN(itens.length - conf.length)}</b></div>
-    <div class="chip"><small>Corretos</small><b style="color:var(--verde)">${fN(corr)}</b></div>
-    <div class="chip"><small>Divergentes</small><b style="color:var(--verm)">${fN(conf.length - corr)}</b></div>
-    <div class="chip"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>
-    <div class="chip"><small>Ajustes confirmados</small><b style="color:var(--verde)">${fN(itens.filter(i => i.ajuste).length)}</b> <small style="display:inline">de ${fN(itens.length)}</small></div>` : '';
+  $('amoChips').innerHTML = c ? chipsAmostragem(itens) : '';
   let lista = filtraBusca(itens, $('amoBusca').value);
   const f = $('amoFiltro').value;
   if (f === 'pend') lista = lista.filter(i => i.conferido === null);
@@ -752,11 +743,26 @@ $('amoTabela').addEventListener('keydown', e => {
   const prox = todos[todos.indexOf(e.target) + 1];
   e.target.blur(); if (prox) { prox.focus(); prox.select(); }
 });
+const CORES_AJ = { 'Certo': 'var(--verde)', 'Baixa': 'var(--verm)', 'Baixa 24 Horas': 'var(--amar)', 'Falha Protheus': 'var(--roxo)', 'Fora do Centro de Custo': '#4B5563' };
+function chipsAmostragem(itens) {
+  const conf = itens.filter(i => i.conferido !== null);
+  const corr = conf.filter(i => i.status === 'Correto').length;
+  const confirmados = itens.filter(i => i.ajuste);
+  const aj = a => confirmados.filter(i => i.ajuste === a).length;
+  return `
+    <div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
+    <div class="chip"><small>Conferidos</small><b>${fN(conf.length)}</b></div>
+    <div class="chip"><small>Pendentes</small><b>${fN(itens.length - conf.length)}</b></div>
+    <div class="chip"><small>Corretos</small><b style="color:var(--verde)">${fN(corr)}</b></div>
+    <div class="chip"><small>Divergentes</small><b style="color:var(--verm)">${fN(conf.length - corr)}</b></div>
+    <div class="chip"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>
+    <div class="chip"><small>Ajustes confirmados</small><b style="color:var(--verde)">${fN(confirmados.length)}</b> <small style="display:inline">de ${fN(itens.length)}</small></div>
+    ${AJUSTES.map(a => `<div class="chip" title="% sobre os ajustes confirmados" style="border-top:3px solid ${CORES_AJ[a]}"><small>${rotuloAj(a)}</small>
+      <b style="color:${CORES_AJ[a]}">${fP(confirmados.length ? aj(a) / confirmados.length : null)}</b> <small style="display:inline">${fN(aj(a))} itens</small></div>`).join('')}`;
+}
 function atualizarChipsAmostragem() {
-  const c = cicloPorId($('amoCiclo').value); const itens = (cache[c.id] || []).filter(i => !i.oculto);
-  const conf = itens.filter(i => i.conferido !== null); const corr = conf.filter(i => i.status === 'Correto').length;
-  const b = $('amoChips').querySelectorAll('b');
-  if (b.length === 7) { b[1].textContent = fN(conf.length); b[2].textContent = fN(itens.length - conf.length); b[3].textContent = fN(corr); b[4].textContent = fN(conf.length - corr); b[5].textContent = fP(conf.length ? corr / conf.length : null); b[6].textContent = fN(itens.filter(i => i.ajuste).length); }
+  const c = cicloPorId($('amoCiclo').value); if (!c) return;
+  $('amoChips').innerHTML = chipsAmostragem((cache[c.id] || []).filter(i => !i.oculto));
 }
 $('amoEnviar').onclick = async () => {
   const c = cicloPorId($('amoCiclo').value); if (!c) return;
