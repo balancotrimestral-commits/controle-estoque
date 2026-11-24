@@ -153,6 +153,7 @@
     <button data-aba="estoque">Estoque</button>
     <button data-aba="hoje">Dados Estoque Hoje</button>
     <button data-aba="dashboard">Dashboard</button>
+    <button data-aba="ocultos" title="Itens com saldo corrigido para zero e contagem zero" style="margin-left:auto;font-size:13px">🔒 Ocultos</button>
   </nav>
   <main>
 
@@ -252,6 +253,18 @@
       <p class="dica">Dados reais puxados do sistema, apenas para consulta. Não alteram nenhuma outra tela.</p>
       <div class="chips" id="hojeChips"></div>
       <div class="tabela" id="hojeTabela"></div>
+    </section>
+
+    <!-- OCULTOS -->
+    <section id="aba-ocultos" class="hide">
+      <div class="barra">
+        <select id="ocCiclo" aria-label="Ciclo"></select>
+        <span class="esp"></span>
+        <button id="ocRel">Emitir relatório (Excel)</button>
+      </div>
+      <p class="dica">Itens em que o <b>Saldo em Estoque</b> foi corrigido para <b>0</b> e a <b>Amostra Conferida</b> é <b>0</b>. Ficam fora de todas as listagens, do Estoque, do Dashboard e da apresentação. Use <b>Restaurar</b> para devolver o item à listagem (volta o saldo original).</p>
+      <div class="chips" id="ocChips"></div>
+      <div class="tabela" id="ocTabela"></div>
     </section>
 
     <!-- DASHBOARD -->
@@ -561,6 +574,7 @@ async function abrirAba(aba) {
     if (aba === 'estoque') await telaEstoque();
     if (aba === 'hoje') await telaHoje();
     if (aba === 'dashboard') await telaDashboard();
+    if (aba === 'ocultos') await telaOcultos();
   } catch (e) { falha(e); } finally { carregando(false); }
 }
 
@@ -575,11 +589,13 @@ function preencherSelect(sel, lista, valorPadrao, vazio) {
   sel.value = ids.includes(String(valorPadrao)) ? String(valorPadrao) : ids.includes(atual) ? atual : (ids[0] || '');
 }
 const cicloPorId = id => ciclos.find(c => String(c.id) === String(id));
-async function itensDoCiclo(id, forcar) {
+async function itensTodosDoCiclo(id, forcar) {
   if (!id) return [];
   if (!cache[id] || forcar) cache[id] = await buscarTudo(() => sb.from('itens').select('*').eq('ciclo_id', id).order('descricao').order('id'));
   return cache[id];
 }
+// listagens normais não mostram os itens ocultos (saldo corrigido para 0 e contagem 0)
+async function itensDoCiclo(id, forcar) { return (await itensTodosDoCiclo(id, forcar)).filter(i => !i.oculto); }
 let cicloSelecionado = null; // mantém o mesmo ciclo entre as telas
 
 /* =====================================================================
@@ -654,6 +670,7 @@ $('amoTabela').addEventListener('change', async e => {
     const novo = await ok(sb.from('itens').update({ conferido: v }).eq('id', id).select().single());
     const lista = cache[novo.ciclo_id]; const k = lista.findIndex(x => x.id === id); lista[k] = novo;
     const tr = inp.closest('tr'); const c = cicloPorId(novo.ciclo_id);
+    if (novo.oculto) { tr.remove(); atualizarChipsAmostragem(); return toast(`${novo.codigo} movido para a aba Ocultos (saldo corrigido e contagem zerados).`); }
     const tmp = document.createElement('tbody'); tmp.innerHTML = linhaAmostragem(novo, c, true);
     const nova = tmp.firstElementChild;
     [...tr.children].forEach((td, n) => { if (n !== 6) td.innerHTML = nova.children[n].innerHTML; });
@@ -664,6 +681,7 @@ $('amoTabela').addEventListener('change', async e => {
 function trocarLinhaAmostragem(novo) {
   const lista = cache[novo.ciclo_id]; lista[lista.findIndex(x => x.id === novo.id)] = novo;
   const tr = document.querySelector(`#amoTabela tr[data-id="${novo.id}"]`); if (!tr) return;
+  if (novo.oculto) { tr.remove(); atualizarChipsAmostragem(); return toast(`${novo.codigo} movido para a aba Ocultos (saldo corrigido e contagem zerados).`); }
   const tmp = document.createElement('tbody'); tmp.innerHTML = linhaAmostragem(novo, cicloPorId(novo.ciclo_id), true);
   const nova = tmp.firstElementChild; tr.replaceWith(nova);
   nova.classList.add('salvo'); atualizarChipsAmostragem();
@@ -687,7 +705,7 @@ async function gravarSaldo(campos) {
   try {
     carregando(true);
     const novo = await ok(sb.from('itens').update(campos).eq('id', itemSaldo.id).select().single());
-    $('mSaldo').classList.add('hide'); trocarLinhaAmostragem(novo); toast('Saldo atualizado.');
+    $('mSaldo').classList.add('hide'); trocarLinhaAmostragem(novo); if (!novo.oculto) toast('Saldo atualizado.');
   } catch (e) { $('sErro').textContent = e.message; } finally { carregando(false); }
 }
 $('sOk').onclick = () => {
@@ -735,7 +753,7 @@ $('amoTabela').addEventListener('keydown', e => {
   e.target.blur(); if (prox) { prox.focus(); prox.select(); }
 });
 function atualizarChipsAmostragem() {
-  const c = cicloPorId($('amoCiclo').value); const itens = cache[c.id] || [];
+  const c = cicloPorId($('amoCiclo').value); const itens = (cache[c.id] || []).filter(i => !i.oculto);
   const conf = itens.filter(i => i.conferido !== null); const corr = conf.filter(i => i.status === 'Correto').length;
   const b = $('amoChips').querySelectorAll('b');
   if (b.length === 7) { b[1].textContent = fN(conf.length); b[2].textContent = fN(itens.length - conf.length); b[3].textContent = fN(corr); b[4].textContent = fN(conf.length - corr); b[5].textContent = fP(conf.length ? corr / conf.length : null); b[6].textContent = fN(itens.filter(i => i.ajuste).length); }
@@ -796,7 +814,8 @@ $('amoExportar').onchange = async () => {
   const tipo = $('amoExportar').value; $('amoExportar').value = '';
   const c = cicloPorId($('amoCiclo').value); if (!c || !tipo) return;
   const itens = await itensDoCiclo(c.id);
-  if (tipo === 'saldo') return exportarSaldo(c.data_ref, itens.map(i => ({ codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, armazem: i.armazem, saldo: i.saldo_sistema, valor: i.valor_total })), c.data_ref);
+  if (tipo === 'saldo') { const todos = await itensTodosDoCiclo(c.id);
+    return exportarSaldo(c.data_ref, todos.map(i => ({ codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, armazem: i.armazem, saldo: i.saldo_original ?? i.saldo_sistema, valor: i.valor_total })), c.data_ref); }
   if (tipo === 'contagem') {   // 2 – Amostragem (planilha de contagem)
     const aoa = [['DATA', 'CODIGO', 'DESCRICAO', 'U.M.', 'ARMZ', 'SALDO EM ESTOQUE', 'CONT. AMOSTRAGEM', 'STATUS'],
       ...itens.map(i => [dataExcel(c.data_ref), i.codigo, i.descricao, i.unidade, i.armazem, num(i.saldo_sistema), num(i.conferido) ?? '', statusAuto(num(i.saldo_sistema), num(i.conferido))])];
@@ -827,7 +846,7 @@ async function montarPlanoContagem() {
   const c = cicloPorId($('amoCiclo').value);
   const lido = await lerExcel(f);
   if (!lido.temConferido) throw new Error('Não encontrei a coluna "CONT. AMOSTRAGEM" na planilha.');
-  const itens = await itensDoCiclo(c.id);
+  const itens = await itensTodosDoCiclo(c.id);
   const porChave = new Map(itens.map(i => [i.codigo + '|' + (i.armazem || ''), i]));
   const porCodigo = new Map(); itens.forEach(i => porCodigo.set(i.codigo, porCodigo.has(i.codigo) ? null : i));
   const linhas = agrupar(lido.itens.map(i => ({ ...i, data: null }))).itens;
@@ -1247,6 +1266,55 @@ $('dashForaRel').onclick = async () => {
   baixarPlanilha(`Itens_Fora_Centro_Custo_${mesCiclo(r).replace('/', '_')}.xlsx`, 'Fora do Centro de Custo', aoa,
     { linha1: 4, larguras: [10, 48, 6, 6, 16, 18, 15, 17, 40, 16, 16], mesclar: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }],
       formatos: { G: FMT_RS, H: FMT_RS } });
+};
+/* =====================================================================
+   OCULTOS
+   ===================================================================== */
+async function telaOcultos() {
+  preencherSelect($('ocCiclo'), ciclos, cicloSelecionado, 'Nenhum ciclo');
+  await desenharOcultos();
+}
+$('ocCiclo').onchange = () => { cicloSelecionado = $('ocCiclo').value; abrirAba('ocultos'); };
+async function listaOcultos() { const c = cicloPorId($('ocCiclo').value); return c ? (await itensTodosDoCiclo(c.id)).filter(i => i.oculto) : []; }
+async function desenharOcultos() {
+  const c = cicloPorId($('ocCiclo').value), lista = await listaOcultos();
+  const pode = c && c.status !== 'fechado';
+  const just = j => lista.filter(i => i.saldo_justificativa === j).length;
+  $('ocRel').disabled = !lista.length;
+  $('ocChips').innerHTML = c ? `<div class="chip"><small>Itens ocultos</small><b>${fN(lista.length)}</b></div>
+    <div class="chip"><small>Falha Protheus</small><b>${fN(just('Falha Protheus'))}</b></div>
+    <div class="chip"><small>Falha Conferência</small><b>${fN(just('Falha Conferência'))}</b></div>
+    <div class="chip"><small>Valor original no sistema</small><b>${fR(lista.reduce((s, i) => s + (num(i.valor_total) || 0), 0))}</b></div>` : '';
+  if (!lista.length) { $('ocTabela').innerHTML = '<div class="vazio">Nenhum item oculto neste ciclo.</div>'; return; }
+  $('ocTabela').innerHTML = `<table><thead><tr><th>Código</th><th>Descrição</th><th>U.M.</th><th class="n">Saldo original</th><th class="n">Saldo corrigido</th><th class="n">Amostra Conferida</th>
+    <th>Justificativa</th><th class="n">Valor original (R$)</th><th>Corrigido por</th><th>Em</th><th></th></tr></thead><tbody>
+    ${lista.map(i => `<tr><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td>${esc(i.unidade)}</td><td class="n">${fN(i.saldo_original)}</td><td class="n">${fN(i.saldo_sistema)}</td>
+      <td class="n">${fN(i.conferido)}</td><td><span class="corrigido" style="cursor:default">${esc(i.saldo_justificativa)}</span></td><td class="n">${fR(num(i.valor_total))}</td>
+      <td>${esc((i.saldo_alterado_por || '').split('@')[0])}</td><td>${i.saldo_alterado_em ? new Date(i.saldo_alterado_em).toLocaleString('pt-BR') : ''}</td>
+      <td>${pode ? `<button class="btnDesf ocRest" data-id="${i.id}">Restaurar</button>` : ''}</td></tr>`).join('')}</tbody></table>`;
+}
+$('ocTabela').addEventListener('click', async e => {
+  const b = e.target.closest('.ocRest'); if (!b) return;
+  const it = Object.values(cache).flat().find(x => x.id === Number(b.dataset.id)); if (!it) return;
+  if (!confirm(`Restaurar ${it.codigo}? O saldo volta para ${fN(it.saldo_original)} e o item volta para a listagem.`)) return;
+  try {
+    carregando(true);
+    const novo = await ok(sb.from('itens').update({ saldo_sistema: num(it.saldo_original), saldo_justificativa: null }).eq('id', it.id).select().single());
+    const l = cache[novo.ciclo_id]; l[l.findIndex(x => x.id === novo.id)] = novo;
+    toast(`${novo.codigo} restaurado.`); await desenharOcultos();
+  } catch (err) { falha(err); } finally { carregando(false); }
+});
+$('ocRel').onclick = async () => {
+  const c = cicloPorId($('ocCiclo').value), lista = await listaOcultos(); if (!lista.length) return;
+  const tot = lista.reduce((s, i) => s + (num(i.valor_total) || 0), 0);
+  const aoa = [[`Relatório – Itens ocultos (saldo corrigido para zero) – ${mesCiclo(c)}`],
+    [`Data da conferência: ${fD(c.data_ref)}   |   Itens: ${lista.length}   |   Emitido em ${new Date().toLocaleString('pt-BR')} por ${usuarioEmail.split('@')[0]}`], [],
+    ['CODIGO', 'DESCRICAO', 'U.M.', 'ARMZ', 'SALDO ORIGINAL', 'SALDO CORRIGIDO', 'CONT. AMOSTRAGEM', 'JUSTIFICATIVA', 'VALOR ORIGINAL', 'CORRIGIDO POR', 'DATA DA CORREÇÃO'],
+    ...lista.map(i => [i.codigo, i.descricao, i.unidade, i.armazem, num(i.saldo_original), num(i.saldo_sistema), num(i.conferido), i.saldo_justificativa || '', num(i.valor_total) ?? '',
+      (i.saldo_alterado_por || '').split('@')[0], i.saldo_alterado_em ? new Date(i.saldo_alterado_em).toLocaleString('pt-BR') : '']),
+    ['TOTAL', '', '', '', '', '', '', '', tot, '', '']];
+  baixarPlanilha(`Itens_Ocultos_${mesCiclo(c).replace('/', '_')}.xlsx`, 'Itens Ocultos', aoa,
+    { linha1: 4, larguras: [10, 48, 6, 6, 15, 16, 18, 18, 16, 16, 20], mesclar: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } }], formatos: { I: FMT_RS } });
 };
 $('dashExport').onclick = () => exportar('Dashboard_Comparativo', resumo.map(x => { const z = totaisCiclo(x); return {
   'Mês conferência': fD(x.data_ref), 'Itens analisados': z.total, 'Valor em estoque (R$)': num(x.valor_ajustado),
