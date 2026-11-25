@@ -64,6 +64,7 @@
   td select{padding:4px 6px}
   .btnOk{background:var(--verde);border-color:var(--verde);color:#fff;padding:4px 10px;font-size:12px}
   .btnOk:hover{background:#17663D;border-color:#17663D}
+  .amoSel,#amoSelTodos{width:17px;height:17px;vertical-align:middle;margin-right:8px;cursor:pointer;accent-color:var(--verde)}
   .btnDesf{padding:3px 8px;font-size:11px;color:var(--mut)}
   .finalizado{color:var(--verde);font-weight:600;font-size:12px;margin-right:6px}
   tr.conf td{background:#F3FAF5}
@@ -166,6 +167,7 @@
         <button class="pri" id="amoNovo">+ Novo ciclo (importar Saldo em Estoque)</button>
         <button id="amoImportCont">Importar contagem (Excel)</button>
         <button id="amoConfCorretos" title="Confirma de uma vez todos os itens com contagem igual ao saldo">✔ Confirmar todos os Corretos</button>
+        <button class="pri" id="amoConfSel" disabled title="Confirma as linhas marcadas com o Ajuste escolhido em cada uma">✔ Confirmar selecionados (0)</button>
         <button id="amoEnviar">Enviar para Inventário ➜</button>
         <select id="amoExportar" aria-label="Exportar">
           <option value="">Exportar Excel…</option>
@@ -613,7 +615,7 @@ async function desenharAmostragem() {
   const itens = c ? await itensDoCiclo(c.id) : [];
   const editavel = c && c.status === 'conferencia';
   $('amoStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
-  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoConfCorretos').disabled = !editavel;
+  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoConfCorretos').disabled = !editavel; selAmo.clear(); contarSelecao();
   $('amoChips').innerHTML = c ? chipsAmostragem(itens) : '';
   let lista = filtraBusca(itens, $('amoBusca').value);
   const f = $('amoFiltro').value;
@@ -625,7 +627,7 @@ async function desenharAmostragem() {
   if (!c) { $('amoTabela').innerHTML = '<div class="vazio">Crie um ciclo importando a planilha do sistema.</div>'; return; }
   if (!lista.length) { $('amoTabela').innerHTML = '<div class="vazio">Nenhum item.</div>'; return; }
   $('amoTabela').innerHTML = `<table><thead><tr><th class="opc">Data</th><th>Código</th><th>Descrição</th><th class="opc">Unidade</th><th class="opc">Armazém</th>
-    <th class="n">Saldo em Estoque</th><th class="n">Amostra Conferida</th><th class="n">Divergência</th><th>Status</th><th>Dado Identificado</th><th>Ajuste</th><th>Confirmação</th>
+    <th class="n">Saldo em Estoque</th><th class="n">Amostra Conferida</th><th class="n">Divergência</th><th>Status</th><th>Dado Identificado</th><th>Ajuste</th><th style="white-space:nowrap">${editavel ? '<input type="checkbox" id="amoSelTodos" title="Selecionar todos os itens visíveis" aria-label="Selecionar todos">' : ''}Confirmação</th>
     <th class="n opc">Valor Unitário</th><th class="n opc">Valor Total</th></tr></thead><tbody>${lista.map(i => linhaAmostragem(i, c, editavel)).join('')}</tbody></table>`;
 }
 const rotuloAj = a => a === 'Certo' ? 'Correto' : a;   // na Amostragem "Certo" aparece como "Correto"
@@ -636,7 +638,7 @@ function celulasAjuste(i, editavel) {
   const sem = i.conferido === null;
   return `<td><select class="amoAj ${!i.ajuste ? 'sug' : ''}" data-id="${i.id}" ${sem ? 'disabled' : ''} aria-label="Ajuste ${esc(i.codigo)}">
       ${sem ? '<option value="">—</option>' : ''}${AJUSTES.map(a => `<option value="${a}" ${a === i.tipo ? 'selected' : ''}>${rotuloAj(a)}</option>`).join('')}</select></td>
-    <td><button class="btnOk" data-id="${i.id}" ${sem ? 'disabled title="Informe a contagem primeiro"' : ''}>✔ Confirmar</button></td>`;
+    <td style="white-space:nowrap">${sem ? '' : `<input type="checkbox" class="amoSel" data-id="${i.id}" ${selAmo.has(i.id) ? 'checked' : ''} aria-label="Selecionar ${esc(i.codigo)}">`}<button class="btnOk" data-id="${i.id}" ${sem ? 'disabled title="Informe a contagem primeiro"' : ''}>✔ Confirmar</button></td>`;
 }
 function celulaSaldo(i, editavel) {
   const marca = i.saldo_original != null
@@ -676,6 +678,7 @@ function trocarLinhaAmostragem(novo) {
   const tmp = document.createElement('tbody'); tmp.innerHTML = linhaAmostragem(novo, cicloPorId(novo.ciclo_id), true);
   const nova = tmp.firstElementChild; tr.replaceWith(nova);
   nova.classList.add('salvo'); atualizarChipsAmostragem();
+  if (novo.ajuste) selAmo.delete(novo.id); contarSelecao();
 }
 $('amoTabela').addEventListener('change', e => { const s = e.target.closest('.amoAj'); if (s) s.classList.remove('sug'); });
 let itemSaldo = null;
@@ -725,6 +728,33 @@ $('amoTabela').addEventListener('click', async e => {
     trocarLinhaAmostragem(await ok(sb.from('itens').update(campos).eq('id', id).select().single()));
   } catch (err) { falha(err); (ok1 || desf).disabled = false; }
 });
+/* ---------- seleção múltipla ---------- */
+const selAmo = new Set();
+function contarSelecao() {
+  $('amoConfSel').textContent = `✔ Confirmar selecionados (${selAmo.size})`;
+  $('amoConfSel').disabled = !selAmo.size;
+  const caixas = [...document.querySelectorAll('#amoTabela .amoSel')], todos = $('amoSelTodos');
+  if (todos) { const m = caixas.filter(x => x.checked).length; todos.checked = caixas.length > 0 && m === caixas.length; todos.indeterminate = m > 0 && m < caixas.length; }
+}
+$('amoTabela').addEventListener('change', e => {
+  if (e.target.id === 'amoSelTodos') {
+    document.querySelectorAll('#amoTabela .amoSel').forEach(x => { x.checked = e.target.checked; e.target.checked ? selAmo.add(+x.dataset.id) : selAmo.delete(+x.dataset.id); });
+    return contarSelecao();
+  }
+  if (e.target.classList.contains('amoSel')) { e.target.checked ? selAmo.add(+e.target.dataset.id) : selAmo.delete(+e.target.dataset.id); contarSelecao(); }
+});
+$('amoConfSel').onclick = async () => {
+  const c = cicloPorId($('amoCiclo').value); if (!c || !selAmo.size) return;
+  const itens = (await itensDoCiclo(c.id)).filter(i => selAmo.has(i.id) && !i.ajuste && i.conferido !== null);
+  const lote = itens.map(i => { const sel = document.querySelector(`#amoTabela .amoAj[data-id="${i.id}"]`); return { id: i.id, ajuste: (sel && sel.value) || i.tipo }; });
+  const resumo = AJUSTES.map(a => [rotuloAj(a), lote.filter(x => x.ajuste === a).length]).filter(x => x[1]).map(x => `${x[0]}: ${x[1]}`).join('\n');
+  if (!confirm(`Confirmar ${lote.length} item(ns) selecionado(s)?\n\n${resumo}`)) return;
+  try {
+    carregando(true); let n = 0;
+    for (let k = 0; k < lote.length; k += 500) n += Number(await ok(sb.rpc('confirmar_itens', { p_ciclo: c.id, p_itens: lote.slice(k, k + 500) }))) || 0;
+    selAmo.clear(); await itensDoCiclo(c.id, true); toast(`${n} item(ns) confirmado(s).`); abrirAba('amostragem');
+  } catch (err) { falha(err); carregando(false); }
+};
 $('amoConfCorretos').onclick = async () => {
   const c = cicloPorId($('amoCiclo').value); if (!c) return;
   const n = (await itensDoCiclo(c.id)).filter(i => i.status === 'Correto' && !i.ajuste).length;
