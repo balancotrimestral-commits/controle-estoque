@@ -78,6 +78,7 @@
   .t-Baixa24{background:var(--amarBg);color:var(--amar)}
   .t-Falha{background:var(--roxoBg);color:var(--roxo)}
   .t-Fora{background:#E5E7EB;color:#374151}
+  .t-avulso{background:#DBEAFE;color:#1E40AF;font-size:10px;padding:1px 6px}
   .btnSaldo{padding:1px 6px;font-size:12px;margin-left:6px;color:var(--azul)}
   .corrigido{display:inline-block;font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;background:var(--amarBg);color:var(--amar);margin-left:4px;cursor:help}
   .riscado{text-decoration:line-through;color:var(--mut);font-size:13px;margin-right:4px}
@@ -170,6 +171,7 @@
         <button class="pri" id="amoNovo">+ Novo ciclo (importar Saldo em Estoque)</button>
         <button id="amoImportCont">Importar contagem (Excel)</button>
         <button id="amoImportAj" title="Atualiza somente a coluna Ajuste a partir de uma planilha">Importar Ajuste (Excel)</button>
+        <button id="amoAvulso" title="Inclui um item no ciclo sem alterar os demais">+ Incluir item avulso</button>
         <button id="amoConfCorretos" title="Confirma de uma vez todos os itens com contagem igual ao saldo">✔ Confirmar todos os Corretos</button>
         <button class="pri" id="amoConfSel" disabled title="Confirma as linhas marcadas com o Ajuste escolhido em cada uma">✔ Confirmar selecionados (0)</button>
         <button id="amoEnviar">Enviar para Inventário ➜</button>
@@ -191,7 +193,7 @@
           <option value="Correto">Corretos (contagem = saldo)</option><option value="Divergente">Divergentes</option>
           <option value="confirmados">Ajustes confirmados</option><option value="naoconf">Não confirmados (Ajuste)</option>
           <option value="aj:Certo">Ajuste: Correto</option><option value="aj:Baixa">Ajuste: Baixa</option><option value="aj:Baixa 24 Horas">Ajuste: Baixa 24 Horas</option><option value="aj:Falha Protheus">Ajuste: Falha Protheus</option>
-          <option value="foracc">Fora do Centro de Custo</option><option value="saldocorr">Saldo corrigido</option>
+          <option value="foracc">Fora do Centro de Custo</option><option value="saldocorr">Saldo corrigido</option><option value="avulso">Itens avulsos</option>
         </select>
       </div>
       <div class="tabela" id="amoTabela"></div>
@@ -327,6 +329,26 @@
     <select id="sJust" style="width:100%"><option value="">Selecione…</option><option>Falha Protheus</option><option>Falha Conferência</option><option>Correção</option></select>
     <div class="erro" id="sErro"></div>
     <div class="acoes"><button id="sRestaurar" class="perigo">Voltar ao saldo original</button><span style="flex:1"></span><button id="sCancelar">Cancelar</button><button class="pri" id="sOk">Salvar correção</button></div>
+  </div>
+</div>
+
+<!-- MODAL: item avulso -->
+<div class="fundoModal hide" id="mAv">
+  <div class="modal">
+    <h2>Incluir item avulso</h2>
+    <p class="dica" style="margin:0">Inclui um item neste ciclo sem alterar os demais. Ao digitar o código, os dados são buscados de ciclos anteriores (se existirem).</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 12px">
+      <div><label for="avCod">Código *</label><input type="text" id="avCod" style="width:100%" autocomplete="off"></div>
+      <div><label for="avArm">Armazém</label><input type="text" id="avArm" style="width:100%" value="CI"></div>
+      <div style="grid-column:1/3"><label for="avDesc">Descrição *</label><input type="text" id="avDesc" style="width:100%"></div>
+      <div><label for="avUn">Unidade</label><input type="text" id="avUn" style="width:100%" value="UN"></div>
+      <div><label for="avVu">Valor unitário (R$)</label><input type="text" id="avVu" inputmode="decimal" style="width:100%"></div>
+      <div><label for="avSaldo">Saldo em Estoque (sistema) *</label><input type="text" id="avSaldo" inputmode="decimal" style="width:100%" value="0"></div>
+      <div><label for="avCont">Amostra Conferida</label><input type="text" id="avCont" inputmode="decimal" style="width:100%"></div>
+    </div>
+    <div class="previa hide" id="avInfo"></div>
+    <div class="erro" id="avErro"></div>
+    <div class="acoes"><button id="avCancelar">Cancelar</button><button class="pri" id="avOk">Incluir item</button></div>
   </div>
 </div>
 
@@ -636,7 +658,7 @@ async function desenharAmostragem() {
   const itens = c ? await itensDoCiclo(c.id) : [];
   const editavel = c && c.status === 'conferencia';
   $('amoStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
-  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoImportAj').disabled = !editavel; $('amoConfCorretos').disabled = !editavel; selAmo.clear(); contarSelecao();
+  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoImportAj').disabled = !editavel; $('amoAvulso').disabled = !editavel; $('amoConfCorretos').disabled = !editavel; selAmo.clear(); contarSelecao();
   $('amoChips').innerHTML = c ? chipsAmostragem(itens) : '';
   let lista = filtraBusca(itens, $('amoBusca').value);
   const f = $('amoFiltro').value;
@@ -648,6 +670,7 @@ async function desenharAmostragem() {
   else if (f === 'naoconf') lista = lista.filter(i => !i.ajuste);
   else if (f === 'saldocorr') lista = lista.filter(i => i.saldo_original != null);
   else if (f === 'foracc') lista = lista.filter(i => i.ajuste === FORA_CC);
+  else if (f === 'avulso') lista = lista.filter(i => i.avulso);
   else if (f === 'confirmados') lista = lista.filter(i => i.ajuste && dentro(i));
   else if (f) lista = lista.filter(i => dentro(i) && i.status === f);
   marcarChipAtivo();
@@ -676,7 +699,7 @@ function celulaSaldo(i, editavel) {
   return `<td class="n" style="white-space:nowrap">${marca}${fN(i.saldo_sistema)}${selo}${btn}</td>`;
 }
 function linhaAmostragem(i, c, editavel) {
-  return `<tr data-id="${i.id}" class="${i.ajuste && editavel ? 'conf' : ''}"><td class="opc">${fD(c.data_ref)}</td><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td class="opc">${esc(i.unidade)}</td><td class="opc">${esc(i.armazem)}</td>
+  return `<tr data-id="${i.id}" class="${i.ajuste && editavel ? 'conf' : ''}"><td class="opc">${fD(c.data_ref)}</td><td style="white-space:nowrap">${esc(i.codigo)}${i.avulso ? ` <span class="tag t-avulso" title="Incluído manualmente por ${esc((i.incluido_por || '').split('@')[0])}">Avulso</span>${editavel && !i.ajuste ? ` <button class="btnDesf avDel" data-id="${i.id}" title="Excluir este item avulso">✕</button>` : ''}` : ''}</td><td class="desc">${esc(i.descricao)}</td><td class="opc">${esc(i.unidade)}</td><td class="opc">${esc(i.armazem)}</td>
     ${celulaSaldo(i, editavel)}
     <td class="n">${editavel && !i.ajuste ? `<input class="inpConf" inputmode="decimal" value="${i.conferido ?? ''}" data-id="${i.id}" aria-label="Amostra conferida ${esc(i.codigo)}">` : fN(i.conferido)}</td>
     <td class="n">${sinal(num(i.divergencia))}</td><td>${tag(i.status)}</td><td>${tag(i.tipo)}</td>${celulasAjuste(i, editavel)}
@@ -918,6 +941,60 @@ $('amoExportar').onchange = async () => {
     'Amostra Conferida': num(i.conferido), 'Divergência': num(i.divergencia), 'Status': i.status, 'Dado Identificado': i.tipo, 'Ajuste': i.ajuste || '',
     'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total), 'Saldo corrigido por': (i.saldo_alterado_por || '').split('@')[0] })));
 };
+
+/* ---------- item avulso ---------- */
+$('amoAvulso').onclick = () => {
+  ['avCod', 'avDesc', 'avVu', 'avCont'].forEach(id => $(id).value = ''); $('avArm').value = 'CI'; $('avUn').value = 'UN'; $('avSaldo').value = '0';
+  $('avErro').textContent = ''; $('avInfo').classList.add('hide'); $('mAv').classList.remove('hide'); setTimeout(() => $('avCod').focus(), 50);
+};
+$('avCancelar').onclick = () => $('mAv').classList.add('hide');
+$('avCod').addEventListener('change', async () => {
+  const cod = $('avCod').value.trim().toUpperCase(); $('avCod').value = cod; if (!cod) return;
+  const c = cicloPorId($('amoCiclo').value);
+  if ((await itensTodosDoCiclo(c.id)).some(i => i.codigo === cod)) {
+    $('avInfo').textContent = `⚠ O código ${cod} já existe neste ciclo. Use a busca da tabela para encontrá-lo.`; $('avInfo').classList.remove('hide'); return;
+  }
+  try {
+    const r = await ok(sb.from('itens').select('descricao,unidade,armazem,valor_unit,ciclo_id').eq('codigo', cod).order('id', { ascending: false }).range(0, 0));
+    if (r.length) {
+      const x = r[0]; $('avDesc').value = x.descricao || ''; $('avUn').value = x.unidade || 'UN'; $('avArm').value = x.armazem || 'CI';
+      if (x.valor_unit != null) $('avVu').value = String(num(x.valor_unit)).replace('.', ',');
+      const ci = cicloPorId(x.ciclo_id);
+      $('avInfo').textContent = `Dados preenchidos a partir do ciclo ${ci ? mesCiclo(ci) : 'anterior'}. Confira antes de incluir.`;
+    } else $('avInfo').textContent = 'Código não encontrado em ciclos anteriores: preencha os dados.';
+    $('avInfo').classList.remove('hide');
+  } catch (e) { /* sem sugestão */ }
+});
+$('avOk').onclick = async () => {
+  const c = cicloPorId($('amoCiclo').value); $('avErro').textContent = '';
+  const cod = $('avCod').value.trim().toUpperCase(), desc = $('avDesc').value.trim();
+  const saldo = paraNumero($('avSaldo').value), vu = paraNumero($('avVu').value), cont = paraNumero($('avCont').value);
+  if (!cod || !desc) return $('avErro').textContent = 'Informe o código e a descrição.';
+  if (saldo === null || saldo < 0) return $('avErro').textContent = 'Informe o saldo em estoque do sistema (0 se não constar).';
+  if ($('avVu').value.trim() && (vu === null || vu < 0)) return $('avErro').textContent = 'Valor unitário inválido.';
+  if ($('avCont').value.trim() && (cont === null || cont < 0)) return $('avErro').textContent = 'Amostra conferida inválida.';
+  try {
+    carregando(true);
+    const novo = await ok(sb.from('itens').insert({ ciclo_id: c.id, codigo: cod, descricao: desc, unidade: $('avUn').value.trim() || null, armazem: $('avArm').value.trim(),
+      saldo_sistema: saldo, valor_total: vu == null ? null : Math.round(saldo * vu * 100) / 100, valor_unit_informado: vu, conferido: cont,
+      avulso: true, incluido_por: usuarioEmail }).select().single());
+    cache[c.id].push(novo);
+    $('mAv').classList.add('hide'); $('amoFiltro').value = ''; $('amoBusca').value = cod; desenharAmostragem();
+    toast(`Item ${cod} incluído no ciclo.`);
+  } catch (e) {
+    $('avErro').textContent = /duplicate|unique/i.test(e.message) ? `O código ${cod} (armazém ${$('avArm').value}) já existe neste ciclo.` : e.message;
+  } finally { carregando(false); }
+};
+$('amoTabela').addEventListener('click', async e => {
+  const b = e.target.closest('.avDel'); if (!b) return;
+  const it = Object.values(cache).flat().find(x => x.id === Number(b.dataset.id)); if (!it) return;
+  if (!confirm(`Excluir o item avulso ${it.codigo} – ${it.descricao}?`)) return;
+  try {
+    carregando(true); await ok(sb.from('itens').delete().eq('id', it.id));
+    const l = cache[it.ciclo_id]; l.splice(l.findIndex(x => x.id === it.id), 1);
+    toast(`Item ${it.codigo} excluído.`); desenharAmostragem();
+  } catch (err) { falha(err); } finally { carregando(false); }
+});
 
 /* ---------- importar Ajuste (só a classificação) ---------- */
 const MAPA_AJ = { CERTO: 'Certo', CORRETO: 'Certo', BAIXA: 'Baixa', BAIXA24HORAS: 'Baixa 24 Horas', BAIXA24H: 'Baixa 24 Horas', BAIXA24HRS: 'Baixa 24 Horas',
