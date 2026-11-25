@@ -316,7 +316,7 @@
     <label for="sNovo">Saldo correto</label>
     <input type="text" id="sNovo" inputmode="decimal" style="width:100%">
     <label for="sJust">Justificativa</label>
-    <select id="sJust" style="width:100%"><option value="">Selecione…</option><option>Falha Protheus</option><option>Falha Conferência</option></select>
+    <select id="sJust" style="width:100%"><option value="">Selecione…</option><option>Falha Protheus</option><option>Falha Conferência</option><option>Correção</option></select>
     <div class="erro" id="sErro"></div>
     <div class="acoes"><button id="sRestaurar" class="perigo">Voltar ao saldo original</button><span style="flex:1"></span><button id="sCancelar">Cancelar</button><button class="pri" id="sOk">Salvar correção</button></div>
   </div>
@@ -704,7 +704,7 @@ $('sOk').onclick = () => {
   if (v === null || v < 0) return $('sErro').textContent = 'Informe o saldo correto (número maior ou igual a zero).';
   const orig = num(itemSaldo.saldo_original ?? itemSaldo.saldo_sistema);
   if (v === orig) return $('sErro').textContent = 'O valor é igual ao saldo original. Use "Voltar ao saldo original".';
-  if (!$('sJust').value) return $('sErro').textContent = 'Escolha a justificativa: Falha Protheus ou Falha Conferência.';
+  if (!$('sJust').value) return $('sErro').textContent = 'Escolha a justificativa: Falha Protheus, Falha Conferência ou Correção.';
   gravarSaldo({ saldo_sistema: v, saldo_justificativa: $('sJust').value });
 };
 $('sRestaurar').onclick = () => gravarSaldo({ saldo_sistema: num(itemSaldo.saldo_original), saldo_justificativa: null });
@@ -1290,6 +1290,7 @@ async function desenharOcultos() {
   $('ocChips').innerHTML = c ? `<div class="chip"><small>Itens ocultos</small><b>${fN(lista.length)}</b></div>
     <div class="chip"><small>Falha Protheus</small><b>${fN(just('Falha Protheus'))}</b></div>
     <div class="chip"><small>Falha Conferência</small><b>${fN(just('Falha Conferência'))}</b></div>
+    <div class="chip"><small>Correção</small><b>${fN(just('Correção'))}</b></div>
     <div class="chip"><small>Valor original no sistema</small><b>${fR(lista.reduce((s, i) => s + (num(i.valor_total) || 0), 0))}</b></div>` : '';
   if (!lista.length) { $('ocTabela').innerHTML = '<div class="vazio">Nenhum item oculto neste ciclo.</div>'; return; }
   $('ocTabela').innerHTML = `<table><thead><tr><th>Código</th><th>Descrição</th><th>U.M.</th><th class="n">Saldo original</th><th class="n">Saldo corrigido</th><th class="n">Amostra Conferida</th>
