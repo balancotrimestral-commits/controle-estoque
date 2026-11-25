@@ -65,6 +65,9 @@
   .btnOk{background:var(--verde);border-color:var(--verde);color:#fff;padding:4px 10px;font-size:12px}
   .btnOk:hover{background:#17663D;border-color:#17663D}
   .amoSel,#amoSelTodos{width:17px;height:17px;vertical-align:middle;margin-right:8px;cursor:pointer;accent-color:var(--verde)}
+  #amoChips .chip[data-f]{cursor:pointer;transition:border-color .15s}
+  #amoChips .chip[data-f]:hover{border-color:var(--azul2)}
+  #amoChips .chip.ativo{outline:2px solid var(--azul);outline-offset:-1px;background:#EEF4FB}
   .btnDesf{padding:3px 8px;font-size:11px;color:var(--mut)}
   .finalizado{color:var(--verde);font-weight:600;font-size:12px;margin-right:6px}
   tr.conf td{background:#F3FAF5}
@@ -184,9 +187,11 @@
       <div class="barra">
         <input id="amoBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
         <select id="amoFiltro">
-          <option value="">Todos</option><option value="pend">Pendentes de contagem</option>
-          <option value="naoconf">Não confirmados (Ajuste)</option><option value="saldocorr">Saldo corrigido</option><option value="foracc">Fora do Centro de Custo</option><option value="confirmados">Confirmados</option>
-          <option value="Correto">Correto</option><option value="Divergente">Divergente</option>
+          <option value="">Todos</option><option value="inv">Itens no inventário</option><option value="conferidos">Conferidos</option><option value="pend">Pendentes de contagem</option>
+          <option value="Correto">Corretos (contagem = saldo)</option><option value="Divergente">Divergentes</option>
+          <option value="confirmados">Ajustes confirmados</option><option value="naoconf">Não confirmados (Ajuste)</option>
+          <option value="aj:Certo">Ajuste: Correto</option><option value="aj:Baixa">Ajuste: Baixa</option><option value="aj:Baixa 24 Horas">Ajuste: Baixa 24 Horas</option><option value="aj:Falha Protheus">Ajuste: Falha Protheus</option>
+          <option value="foracc">Fora do Centro de Custo</option><option value="saldocorr">Saldo corrigido</option>
         </select>
       </div>
       <div class="tabela" id="amoTabela"></div>
@@ -635,12 +640,17 @@ async function desenharAmostragem() {
   $('amoChips').innerHTML = c ? chipsAmostragem(itens) : '';
   let lista = filtraBusca(itens, $('amoBusca').value);
   const f = $('amoFiltro').value;
-  if (f === 'pend') lista = lista.filter(i => i.conferido === null);
+  const dentro = i => i.ajuste !== FORA_CC;
+  if (f === 'inv') lista = lista.filter(dentro);
+  else if (f === 'conferidos') lista = lista.filter(i => dentro(i) && i.conferido !== null);
+  else if (f === 'pend') lista = lista.filter(i => dentro(i) && i.conferido === null);
+  else if (f.startsWith('aj:')) lista = lista.filter(i => i.ajuste === f.slice(3));
   else if (f === 'naoconf') lista = lista.filter(i => !i.ajuste);
   else if (f === 'saldocorr') lista = lista.filter(i => i.saldo_original != null);
   else if (f === 'foracc') lista = lista.filter(i => i.ajuste === FORA_CC);
-  else if (f === 'confirmados') lista = lista.filter(i => i.ajuste);
-  else if (f) lista = lista.filter(i => i.status === f);
+  else if (f === 'confirmados') lista = lista.filter(i => i.ajuste && dentro(i));
+  else if (f) lista = lista.filter(i => dentro(i) && i.status === f);
+  marcarChipAtivo();
   if (!c) { $('amoTabela').innerHTML = '<div class="vazio">Crie um ciclo importando a planilha do sistema.</div>'; return; }
   if (!lista.length) { $('amoTabela').innerHTML = '<div class="vazio">Nenhum item.</div>'; return; }
   $('amoTabela').innerHTML = `<table><thead><tr><th class="opc">Data</th><th>Código</th><th>Descrição</th><th class="opc">Unidade</th><th class="opc">Armazém</th>
@@ -745,6 +755,17 @@ $('amoTabela').addEventListener('click', async e => {
     trocarLinhaAmostragem(await ok(sb.from('itens').update(campos).eq('id', id).select().single()));
   } catch (err) { falha(err); (ok1 || desf).disabled = false; }
 });
+/* ---------- quadros clicáveis ---------- */
+function marcarChipAtivo() {
+  const f = $('amoFiltro').value;
+  document.querySelectorAll('#amoChips .chip[data-f]').forEach(ch => ch.classList.toggle('ativo', !!f && ch.dataset.f === f && !ch.querySelector('small').textContent.startsWith('Acurácia')));
+}
+$('amoChips').addEventListener('click', e => {
+  const ch = e.target.closest('.chip[data-f]'); if (!ch) return;
+  const f = ch.dataset.f;
+  $('amoFiltro').value = $('amoFiltro').value === f ? '' : f;   // clicar de novo no mesmo quadro limpa o filtro
+  desenharAmostragem();
+});
 /* ---------- seleção múltipla ---------- */
 const selAmo = new Set();
 function contarSelecao() {
@@ -800,21 +821,21 @@ function chipsAmostragem(todos) {
   const confirmados = itens.filter(i => i.ajuste);
   const aj = a => confirmados.filter(i => i.ajuste === a).length;
   return `
-    <div class="chip"><small>Itens no inventário</small><b>${fN(itens.length)}</b></div>
-    <div class="chip"><small>Conferidos</small><b>${fN(conf.length)}</b></div>
-    <div class="chip"><small>Pendentes</small><b>${fN(itens.length - conf.length)}</b></div>
-    <div class="chip"><small>Corretos</small><b style="color:var(--verde)">${fN(corr)}</b></div>
-    <div class="chip"><small>Divergentes</small><b style="color:var(--verm)">${fN(conf.length - corr)}</b></div>
-    <div class="chip"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>
-    <div class="chip"><small>Ajustes confirmados</small><b style="color:var(--verde)">${fN(confirmados.length)}</b> <small style="display:inline">de ${fN(itens.length)}</small></div>
-    ${AJUSTES.filter(a => a !== FORA_CC).map(a => `<div class="chip" title="% sobre os ajustes confirmados" style="border-top:3px solid ${CORES_AJ[a]}"><small>${rotuloAj(a)}</small>
+    <div class="chip" data-f="inv"><small>Itens no inventário</small><b>${fN(itens.length)}</b></div>
+    <div class="chip" data-f="conferidos"><small>Conferidos</small><b>${fN(conf.length)}</b></div>
+    <div class="chip" data-f="pend"><small>Pendentes</small><b>${fN(itens.length - conf.length)}</b></div>
+    <div class="chip" data-f="Correto"><small>Corretos</small><b style="color:var(--verde)">${fN(corr)}</b></div>
+    <div class="chip" data-f="Divergente"><small>Divergentes</small><b style="color:var(--verm)">${fN(conf.length - corr)}</b></div>
+    <div class="chip" data-f="Correto" title="Itens com contagem igual ao saldo"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>
+    <div class="chip" data-f="confirmados"><small>Ajustes confirmados</small><b style="color:var(--verde)">${fN(confirmados.length)}</b> <small style="display:inline">de ${fN(itens.length)}</small></div>
+    ${AJUSTES.filter(a => a !== FORA_CC).map(a => `<div class="chip" data-f="aj:${a}" title="% sobre os ajustes confirmados" style="border-top:3px solid ${CORES_AJ[a]}"><small>${rotuloAj(a)}</small>
       <b style="color:${CORES_AJ[a]}">${fP(confirmados.length ? aj(a) / confirmados.length : null)}</b> <small style="display:inline">${fN(aj(a))} itens</small></div>`).join('')}
-    <div class="chip" title="Fora do inventário: não entram em nenhuma contagem nem percentual" style="border:1px dashed #6B7280;background:#F3F4F6">
+    <div class="chip" data-f="foracc" title="Fora do inventário: não entram em nenhuma contagem nem percentual" style="border:1px dashed #6B7280;background:#F3F4F6">
       <small>Fora do Centro de Custo <i>(fora do inventário)</i></small><b style="color:#374151">${fN(fora.length)}</b> <small style="display:inline">itens · ${fN(fora.reduce((s, i) => s + (num(i.conferido ?? i.saldo_sistema) || 0), 0))} un.</small></div>`;
 }
 function atualizarChipsAmostragem() {
   const c = cicloPorId($('amoCiclo').value); if (!c) return;
-  $('amoChips').innerHTML = chipsAmostragem((cache[c.id] || []).filter(i => !i.oculto));
+  $('amoChips').innerHTML = chipsAmostragem((cache[c.id] || []).filter(i => !i.oculto)); marcarChipAtivo();
 }
 $('amoEnviar').onclick = async () => {
   const c = cicloPorId($('amoCiclo').value); if (!c) return;
