@@ -166,6 +166,7 @@
         <span class="esp"></span>
         <button class="pri" id="amoNovo">+ Novo ciclo (importar Saldo em Estoque)</button>
         <button id="amoImportCont">Importar contagem (Excel)</button>
+        <button id="amoImportAj" title="Atualiza somente a coluna Ajuste a partir de uma planilha">Importar Ajuste (Excel)</button>
         <button id="amoConfCorretos" title="Confirma de uma vez todos os itens com contagem igual ao saldo">✔ Confirmar todos os Corretos</button>
         <button class="pri" id="amoConfSel" disabled title="Confirma as linhas marcadas com o Ajuste escolhido em cada uma">✔ Confirmar selecionados (0)</button>
         <button id="amoEnviar">Enviar para Inventário ➜</button>
@@ -184,7 +185,7 @@
         <input id="amoBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
         <select id="amoFiltro">
           <option value="">Todos</option><option value="pend">Pendentes de contagem</option>
-          <option value="naoconf">Não confirmados (Ajuste)</option><option value="saldocorr">Saldo corrigido</option><option value="confirmados">Confirmados</option>
+          <option value="naoconf">Não confirmados (Ajuste)</option><option value="saldocorr">Saldo corrigido</option><option value="foracc">Fora do Centro de Custo</option><option value="confirmados">Confirmados</option>
           <option value="Correto">Correto</option><option value="Divergente">Divergente</option>
         </select>
       </div>
@@ -321,6 +322,21 @@
     <select id="sJust" style="width:100%"><option value="">Selecione…</option><option>Falha Protheus</option><option>Falha Conferência</option><option>Correção</option></select>
     <div class="erro" id="sErro"></div>
     <div class="acoes"><button id="sRestaurar" class="perigo">Voltar ao saldo original</button><span style="flex:1"></span><button id="sCancelar">Cancelar</button><button class="pri" id="sOk">Salvar correção</button></div>
+  </div>
+</div>
+
+<!-- MODAL: importar ajuste -->
+<div class="fundoModal hide" id="mAj">
+  <div class="modal">
+    <h2>Importar Ajuste</h2>
+    <p class="dica" style="margin:0">Atualiza <b>somente o Ajuste</b> (e confirma a linha) dos itens que estão na planilha. A contagem não é alterada.
+      A planilha precisa ter a coluna <b>CODIGO</b> e uma coluna com a classificação (<b>AJUSTE</b>, <b>AMOSTRA CONFERIDA</b> ou similar) contendo
+      Correto, Baixa, Baixa 24 Horas, Falha Protheus ou Fora do Centro de Custo.</p>
+    <label for="ajArquivo">Planilha Excel</label>
+    <input type="file" id="ajArquivo" accept=".xlsx,.xlsm,.xls,.csv">
+    <label class="check"><input type="checkbox" id="ajSubst"> <span>Substituir também linhas já confirmadas (✔ Finalizado) com outra classificação</span></label>
+    <div class="previa hide" id="ajPrevia"></div>
+    <div class="acoes"><button id="ajCancelar">Cancelar</button><button class="pri" id="ajOk" disabled>Importar Ajuste</button></div>
   </div>
 </div>
 
@@ -615,13 +631,14 @@ async function desenharAmostragem() {
   const itens = c ? await itensDoCiclo(c.id) : [];
   const editavel = c && c.status === 'conferencia';
   $('amoStatus').innerHTML = c ? `<span class="tag t-${c.status}">${STATUS_CICLO[c.status]}</span>` : '';
-  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoConfCorretos').disabled = !editavel; selAmo.clear(); contarSelecao();
+  $('amoEnviar').disabled = !editavel; $('amoExcluir').disabled = !c; $('amoExportar').disabled = !c; $('amoImportCont').disabled = !editavel; $('amoImportAj').disabled = !editavel; $('amoConfCorretos').disabled = !editavel; selAmo.clear(); contarSelecao();
   $('amoChips').innerHTML = c ? chipsAmostragem(itens) : '';
   let lista = filtraBusca(itens, $('amoBusca').value);
   const f = $('amoFiltro').value;
   if (f === 'pend') lista = lista.filter(i => i.conferido === null);
   else if (f === 'naoconf') lista = lista.filter(i => !i.ajuste);
   else if (f === 'saldocorr') lista = lista.filter(i => i.saldo_original != null);
+  else if (f === 'foracc') lista = lista.filter(i => i.ajuste === FORA_CC);
   else if (f === 'confirmados') lista = lista.filter(i => i.ajuste);
   else if (f) lista = lista.filter(i => i.status === f);
   if (!c) { $('amoTabela').innerHTML = '<div class="vazio">Crie um ciclo importando a planilha do sistema.</div>'; return; }
@@ -774,21 +791,26 @@ $('amoTabela').addEventListener('keydown', e => {
   e.target.blur(); if (prox) { prox.focus(); prox.select(); }
 });
 const CORES_AJ = { 'Certo': 'var(--verde)', 'Baixa': 'var(--verm)', 'Baixa 24 Horas': 'var(--amar)', 'Falha Protheus': 'var(--roxo)', 'Fora do Centro de Custo': '#4B5563' };
-function chipsAmostragem(itens) {
+function chipsAmostragem(todos) {
+  // itens "Fora do Centro de Custo" não entram no inventário nem nos percentuais: só ficam evidenciados
+  const fora = todos.filter(i => i.ajuste === FORA_CC);
+  const itens = todos.filter(i => i.ajuste !== FORA_CC);
   const conf = itens.filter(i => i.conferido !== null);
   const corr = conf.filter(i => i.status === 'Correto').length;
   const confirmados = itens.filter(i => i.ajuste);
   const aj = a => confirmados.filter(i => i.ajuste === a).length;
   return `
-    <div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
+    <div class="chip"><small>Itens no inventário</small><b>${fN(itens.length)}</b></div>
     <div class="chip"><small>Conferidos</small><b>${fN(conf.length)}</b></div>
     <div class="chip"><small>Pendentes</small><b>${fN(itens.length - conf.length)}</b></div>
     <div class="chip"><small>Corretos</small><b style="color:var(--verde)">${fN(corr)}</b></div>
     <div class="chip"><small>Divergentes</small><b style="color:var(--verm)">${fN(conf.length - corr)}</b></div>
     <div class="chip"><small>Acurácia</small><b>${fP(conf.length ? corr / conf.length : null)}</b></div>
     <div class="chip"><small>Ajustes confirmados</small><b style="color:var(--verde)">${fN(confirmados.length)}</b> <small style="display:inline">de ${fN(itens.length)}</small></div>
-    ${AJUSTES.map(a => `<div class="chip" title="% sobre os ajustes confirmados" style="border-top:3px solid ${CORES_AJ[a]}"><small>${rotuloAj(a)}</small>
-      <b style="color:${CORES_AJ[a]}">${fP(confirmados.length ? aj(a) / confirmados.length : null)}</b> <small style="display:inline">${fN(aj(a))} itens</small></div>`).join('')}`;
+    ${AJUSTES.filter(a => a !== FORA_CC).map(a => `<div class="chip" title="% sobre os ajustes confirmados" style="border-top:3px solid ${CORES_AJ[a]}"><small>${rotuloAj(a)}</small>
+      <b style="color:${CORES_AJ[a]}">${fP(confirmados.length ? aj(a) / confirmados.length : null)}</b> <small style="display:inline">${fN(aj(a))} itens</small></div>`).join('')}
+    <div class="chip" title="Fora do inventário: não entram em nenhuma contagem nem percentual" style="border:1px dashed #6B7280;background:#F3F4F6">
+      <small>Fora do Centro de Custo <i>(fora do inventário)</i></small><b style="color:#374151">${fN(fora.length)}</b> <small style="display:inline">itens · ${fN(fora.reduce((s, i) => s + (num(i.conferido ?? i.saldo_sistema) || 0), 0))} un.</small></div>`;
 }
 function atualizarChipsAmostragem() {
   const c = cicloPorId($('amoCiclo').value); if (!c) return;
@@ -868,6 +890,78 @@ $('amoExportar').onchange = async () => {
     'Saldo original (sistema)': num(i.saldo_original ?? i.saldo_sistema), 'Saldo em Estoque': num(i.saldo_sistema), 'Justificativa do saldo': i.saldo_justificativa || '',
     'Amostra Conferida': num(i.conferido), 'Divergência': num(i.divergencia), 'Status': i.status, 'Dado Identificado': i.tipo, 'Ajuste': i.ajuste || '',
     'Valor Unitário (R$)': num(i.valor_unit), 'Valor Total (R$)': num(i.valor_total), 'Saldo corrigido por': (i.saldo_alterado_por || '').split('@')[0] })));
+};
+
+/* ---------- importar Ajuste (só a classificação) ---------- */
+const MAPA_AJ = { CERTO: 'Certo', CORRETO: 'Certo', BAIXA: 'Baixa', BAIXA24HORAS: 'Baixa 24 Horas', BAIXA24H: 'Baixa 24 Horas', BAIXA24HRS: 'Baixa 24 Horas',
+  FALHAPROTHEUS: 'Falha Protheus', FORADOCENTRODECUSTO: FORA_CC, FORACENTRODECUSTO: FORA_CC, FORADOCC: FORA_CC };
+const ajusteDe = v => MAPA_AJ[normaliza(v)] || null;
+async function lerPlanilhaAjuste(arquivo) {
+  const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array', cellDates: true });
+  const PRIOR = ['AJUSTE', 'AMOSTRACONFERIDA', 'CLASSIFICACAO', 'AJUSTEFINAL'];
+  for (const nomeAba of wb.SheetNames) {
+    const linhas = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, raw: true, defval: null });
+    for (let h = 0; h < Math.min(linhas.length, 20); h++) {
+      const cab = (linhas[h] || []).map(normaliza);
+      const iCod = cab.findIndex(c => COLUNAS.codigo.includes(c)); if (iCod < 0) continue;
+      const iArm = cab.findIndex(c => COLUNAS.armazem.includes(c));
+      const corpo = linhas.slice(h + 1).filter(l => l && String(l[iCod] ?? '').trim());
+      let melhor = -1, nota = 0;
+      cab.forEach((c, j) => {
+        if (j === iCod) return;
+        const validos = corpo.filter(l => ajusteDe(l[j])).length; if (!validos) return;
+        const n = validos + (PRIOR.includes(c) ? 1e6 : 0);
+        if (n > nota) { nota = n; melhor = j; }
+      });
+      if (melhor < 0) throw new Error('Não encontrei uma coluna com a classificação (Correto, Baixa, Baixa 24 Horas, Falha Protheus ou Fora do Centro de Custo).');
+      return { coluna: String(linhas[h][melhor] ?? ''), itens: corpo.map(l => ({ codigo: String(l[iCod]).trim(), armazem: iArm < 0 ? '' : String(l[iArm] ?? '').trim(), bruto: l[melhor], ajuste: ajusteDe(l[melhor]) })) };
+    }
+  }
+  throw new Error('Não encontrei a coluna "CODIGO" na planilha.');
+}
+let planoAj = null;
+$('amoImportAj').onclick = () => { planoAj = null; $('ajArquivo').value = ''; $('ajSubst').checked = false; $('ajPrevia').classList.add('hide'); $('ajOk').disabled = true; $('mAj').classList.remove('hide'); };
+$('ajCancelar').onclick = () => $('mAj').classList.add('hide');
+async function montarPlanoAjuste() {
+  const f = $('ajArquivo').files[0]; if (!f) return;
+  const c = cicloPorId($('amoCiclo').value), lido = await lerPlanilhaAjuste(f);
+  const itens = await itensTodosDoCiclo(c.id);
+  const porChave = new Map(itens.map(i => [i.codigo + '|' + (i.armazem || ''), i]));
+  const porCodigo = new Map(); itens.forEach(i => porCodigo.set(i.codigo, porCodigo.has(i.codigo) ? null : i));
+  const subst = $('ajSubst').checked, r = { gravar: new Map(), iguais: 0, jaConf: 0, semCont: [], fora: [], invalidos: [] };
+  for (const l of lido.itens) {
+    const it = porChave.get(l.codigo + '|' + l.armazem) || porCodigo.get(l.codigo);
+    if (!it) { r.fora.push(l.codigo); continue; }
+    if (!l.ajuste) { if (l.bruto != null && String(l.bruto).trim()) r.invalidos.push(`${l.codigo} ("${l.bruto}")`); continue; }
+    if (it.conferido === null) { r.semCont.push(l.codigo); continue; }
+    if (it.ajuste === l.ajuste) { r.iguais++; continue; }
+    if (it.ajuste) { r.jaConf++; if (!subst) continue; }
+    r.gravar.set(it.id, l.ajuste);
+  }
+  planoAj = { ciclo: c, lote: [...r.gravar].map(([id, ajuste]) => ({ id, ajuste })) };
+  const porTipo = AJUSTES.map(a => [rotuloAj(a), planoAj.lote.filter(x => x.ajuste === a).length]).filter(x => x[1]).map(x => `   ${x[0]}: ${x[1]}`).join('\n');
+  $('ajPrevia').textContent = [
+    `Coluna lida: "${lido.coluna}" — ${lido.itens.length} linha(s).`,
+    `✔ ${planoAj.lote.length} item(ns) terão o Ajuste atualizado e confirmado:`, porTipo,
+    r.iguais ? `• ${r.iguais} já estavam com essa classificação.` : '',
+    r.jaConf ? `• ${r.jaConf} já confirmados com outra classificação ${subst ? '(serão substituídos)' : '(mantidos — marque a opção acima para substituir)'}.` : '',
+    r.semCont.length ? `⚠ ${r.semCont.length} item(ns) sem contagem no sistema (ignorados): ${r.semCont.slice(0, 6).join(', ')}${r.semCont.length > 6 ? '…' : ''}` : '',
+    r.fora.length ? `⚠ ${r.fora.length} código(s) não existem neste ciclo: ${r.fora.slice(0, 6).join(', ')}${r.fora.length > 6 ? '…' : ''}` : '',
+    r.invalidos.length ? `⚠ ${r.invalidos.length} linha(s) com classificação não reconhecida: ${r.invalidos.slice(0, 4).join('; ')}${r.invalidos.length > 4 ? '…' : ''}` : ''
+  ].filter(Boolean).join('\n');
+  $('ajPrevia').classList.remove('hide'); $('ajOk').disabled = !planoAj.lote.length;
+}
+$('ajArquivo').onchange = async () => { try { carregando(true); await montarPlanoAjuste(); } catch (e) { falha(e); $('ajOk').disabled = true; } finally { carregando(false); } };
+$('ajSubst').onchange = async () => { if ($('ajArquivo').files[0]) { try { carregando(true); await montarPlanoAjuste(); } catch (e) { falha(e); } finally { carregando(false); } } };
+$('ajOk').onclick = async () => {
+  if (!planoAj || !planoAj.lote.length) return;
+  try {
+    carregando(true); let n = 0;
+    for (let k = 0; k < planoAj.lote.length; k += 500)
+      n += Number(await ok(sb.rpc('importar_ajustes', { p_ciclo: planoAj.ciclo.id, p_itens: planoAj.lote.slice(k, k + 500), p_substituir: $('ajSubst').checked }))) || 0;
+    $('mAj').classList.add('hide'); await itensDoCiclo(planoAj.ciclo.id, true);
+    toast(`${n} Ajuste(s) importado(s) e confirmado(s).`); abrirAba('amostragem');
+  } catch (e) { falha(e); carregando(false); }
 };
 
 /* ---------- importar contagem (arquivos 2 e 3) ---------- */
@@ -1062,10 +1156,12 @@ async function desenharDadosInv() {
   $('diReabrir').classList.toggle('hide', !(c && c.status === 'fechado')); $('diExport').disabled = !c;
   const cont = a => itens.filter(i => (i.ajuste || i.tipo) === a).length;
   const impacto = itens.filter(i => i.ajuste !== FORA_CC).reduce((s, i) => s + (num(i.divergencia) || 0) * (num(i.valor_unit) || 0), 0);
+  const dentro = itens.filter(i => i.ajuste !== FORA_CC);
   $('diChips').innerHTML = c ? `
-    <div class="chip"><small>Itens</small><b>${fN(itens.length)}</b></div>
-    <div class="chip"><small>Divergentes</small><b>${fN(itens.filter(i => i.status === 'Divergente').length)}</b></div>
-    ${AJUSTES.map(a => `<div class="chip"><small>${a}</small><b>${fN(cont(a))}</b></div>`).join('')}
+    <div class="chip"><small>Itens no inventário</small><b>${fN(dentro.length)}</b></div>
+    <div class="chip"><small>Divergentes</small><b>${fN(dentro.filter(i => i.status === 'Divergente').length)}</b></div>
+    ${AJUSTES.filter(a => a !== FORA_CC).map(a => `<div class="chip"><small>${a}</small><b>${fN(cont(a))}</b> <small style="display:inline">${fP(dentro.length ? cont(a) / dentro.length : null)}</small></div>`).join('')}
+    <div class="chip" style="border:1px dashed #6B7280;background:#F3F4F6"><small>Fora do Centro de Custo <i>(fora do inventário)</i></small><b>${fN(cont(FORA_CC))}</b></div>
     <div class="chip"><small>Impacto líquido</small><b class="${impacto < 0 ? 'neg' : 'pos'}">${fR(impacto)}</b></div>` : '';
   let lista = filtraBusca(itens, $('diBusca').value);
   const f = $('diFiltro').value;
