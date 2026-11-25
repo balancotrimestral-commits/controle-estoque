@@ -65,9 +65,9 @@
   .btnOk{background:var(--verde);border-color:var(--verde);color:#fff;padding:4px 10px;font-size:12px}
   .btnOk:hover{background:#17663D;border-color:#17663D}
   .amoSel,#amoSelTodos{width:17px;height:17px;vertical-align:middle;margin-right:8px;cursor:pointer;accent-color:var(--verde)}
-  #amoChips .chip[data-f]{cursor:pointer;transition:border-color .15s}
-  #amoChips .chip[data-f]:hover{border-color:var(--azul2)}
-  #amoChips .chip.ativo{outline:2px solid var(--azul);outline-offset:-1px;background:#EEF4FB}
+  #amoChips .chip[data-f],#diChips .chip[data-f]{cursor:pointer;transition:border-color .15s}
+  #amoChips .chip[data-f]:hover,#diChips .chip[data-f]:hover{border-color:var(--azul2)}
+  #amoChips .chip.ativo,#diChips .chip.ativo{outline:2px solid var(--azul);outline-offset:-1px;background:#EEF4FB}
   .btnDesf{padding:3px 8px;font-size:11px;color:var(--mut)}
   .finalizado{color:var(--verde);font-weight:600;font-size:12px;margin-right:6px}
   tr.conf td{background:#F3FAF5}
@@ -227,7 +227,7 @@
       <div class="barra">
         <input id="diBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
         <select id="diFiltro">
-          <option value="div">Somente divergentes</option><option value="">Todos</option>
+          <option value="div">Somente divergentes</option><option value="">Todos</option><option value="inv">Itens no inventário</option><option value="imp">Com impacto financeiro (maior primeiro)</option>
           <option value="Certo">Ajuste: Certo</option><option value="Baixa">Ajuste: Baixa</option>
           <option value="Baixa 24 Horas">Ajuste: Baixa 24 Horas</option><option value="Falha Protheus">Ajuste: Falha Protheus</option><option value="Fora do Centro de Custo">Ajuste: Fora do Centro de Custo</option>
         </select>
@@ -756,6 +756,12 @@ $('amoTabela').addEventListener('click', async e => {
   } catch (err) { falha(err); (ok1 || desf).disabled = false; }
 });
 /* ---------- quadros clicáveis ---------- */
+$('diChips').addEventListener('click', e => {
+  const ch = e.target.closest('.chip[data-f]'); if (!ch) return;
+  const f = ch.dataset.f;
+  $('diFiltro').value = $('diFiltro').value === f ? '' : f;
+  desenharDadosInv();
+});
 function marcarChipAtivo() {
   const f = $('amoFiltro').value;
   document.querySelectorAll('#amoChips .chip[data-f]').forEach(ch => ch.classList.toggle('ativo', !!f && ch.dataset.f === f && !ch.querySelector('small').textContent.startsWith('Acurácia')));
@@ -1179,15 +1185,19 @@ async function desenharDadosInv() {
   const impacto = itens.filter(i => i.ajuste !== FORA_CC).reduce((s, i) => s + (num(i.divergencia) || 0) * (num(i.valor_unit) || 0), 0);
   const dentro = itens.filter(i => i.ajuste !== FORA_CC);
   $('diChips').innerHTML = c ? `
-    <div class="chip"><small>Itens no inventário</small><b>${fN(dentro.length)}</b></div>
-    <div class="chip"><small>Divergentes</small><b>${fN(dentro.filter(i => i.status === 'Divergente').length)}</b></div>
-    ${AJUSTES.filter(a => a !== FORA_CC).map(a => `<div class="chip"><small>${a}</small><b>${fN(cont(a))}</b> <small style="display:inline">${fP(dentro.length ? cont(a) / dentro.length : null)}</small></div>`).join('')}
-    <div class="chip" style="border:1px dashed #6B7280;background:#F3F4F6"><small>Fora do Centro de Custo <i>(fora do inventário)</i></small><b>${fN(cont(FORA_CC))}</b></div>
-    <div class="chip"><small>Impacto líquido</small><b class="${impacto < 0 ? 'neg' : 'pos'}">${fR(impacto)}</b></div>` : '';
+    <div class="chip" data-f="inv"><small>Itens no inventário</small><b>${fN(dentro.length)}</b></div>
+    <div class="chip" data-f="div"><small>Divergentes</small><b>${fN(dentro.filter(i => i.status === 'Divergente').length)}</b></div>
+    ${AJUSTES.filter(a => a !== FORA_CC).map(a => `<div class="chip" data-f="${a}"><small>${a}</small><b>${fN(cont(a))}</b> <small style="display:inline">${fP(dentro.length ? cont(a) / dentro.length : null)}</small></div>`).join('')}
+    <div class="chip" data-f="${FORA_CC}" style="border:1px dashed #6B7280;background:#F3F4F6"><small>Fora do Centro de Custo <i>(fora do inventário)</i></small><b>${fN(cont(FORA_CC))}</b></div>
+    <div class="chip" data-f="imp" title="Itens com impacto financeiro, do maior para o menor"><small>Impacto líquido</small><b class="${impacto < 0 ? 'neg' : 'pos'}">${fR(impacto)}</b></div>` : '';
   let lista = filtraBusca(itens, $('diBusca').value);
   const f = $('diFiltro').value;
-  if (f === 'div') lista = lista.filter(i => i.status === 'Divergente');
+  const fora = i => i.ajuste === FORA_CC, impItem = i => (num(i.divergencia) || 0) * (num(i.valor_unit) || 0);
+  if (f === 'div') lista = lista.filter(i => !fora(i) && i.status === 'Divergente');
+  else if (f === 'inv') lista = lista.filter(i => !fora(i));
+  else if (f === 'imp') lista = lista.filter(i => !fora(i) && impItem(i)).sort((a, b) => Math.abs(impItem(b)) - Math.abs(impItem(a)));
   else if (f) lista = lista.filter(i => (i.ajuste || i.tipo) === f);
+  document.querySelectorAll('#diChips .chip[data-f]').forEach(ch => ch.classList.toggle('ativo', !!f && ch.dataset.f === f));
   if (!c) { $('diTabela').innerHTML = '<div class="vazio">Envie uma conferência pela Amostragem.</div>'; return; }
   if (!lista.length) { $('diTabela').innerHTML = '<div class="vazio">Nenhum item neste filtro.</div>'; return; }
   $('diTabela').innerHTML = `<table><thead><tr><th>Código</th><th>Descrição</th><th>Unidade</th><th class="n">Saldo em Estoque</th><th class="n">Conferência</th>
