@@ -205,7 +205,7 @@
         <span class="esp"></span>
         <button id="invExport">Exportar Excel</button>
       </div>
-      <p class="dica">Resultado da conferência já enviada pela Amostragem (saldo contado × valor unitário). Somente leitura.</p>
+      <p class="dica">Resultado da conferência já enviada pela Amostragem (saldo ajustado × valor unitário). Itens "Fora do Centro de Custo" não entram aqui. Somente leitura.</p>
       <div class="chips" id="invChips"></div>
       <div class="tabela" id="invTabela"></div>
     </section>
@@ -1121,13 +1121,15 @@ async function telaInventario() {
 }
 $('invCiclo').onchange = () => { if ($('invCiclo').value !== 'todos') cicloSelecionado = $('invCiclo').value; abrirAba('inventario'); };
 $('invBusca').oninput = () => desenharInventario();
+let foraInv = 0;
 async function linhasInventario() {
   const v = $('invCiclo').value;
   const alvo = v === 'todos' ? ciclos.filter(c => c.status !== 'conferencia') : [cicloPorId(v)].filter(Boolean);
-  let linhas = [];
+  let linhas = []; foraInv = 0;
   for (const c of alvo.slice().sort((a, b) => a.data_ref.localeCompare(b.data_ref))) {
     (await itensDoCiclo(c.id)).forEach(i => {
-      const saldo = num(i.conferido ?? i.saldo_sistema);
+      if (i.ajuste === FORA_CC) { foraInv++; return; }      // fora do centro de custo: não entra no inventário
+      const saldo = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema);
       linhas.push({ c, i, saldo, vu: num(i.valor_unit), vt: i.valor_unit == null ? null : saldo * num(i.valor_unit) });
     });
   }
@@ -1137,8 +1139,9 @@ async function desenharInventario() {
   const linhas = await linhasInventario();
   const vis = linhas.filter(l => filtraBusca([l.i], $('invBusca').value).length);
   $('invChips').innerHTML = `<div class="chip"><small>Itens</small><b>${fN(vis.length)}</b></div>
-    <div class="chip"><small>Valor total</small><b>${fR(vis.reduce((s, l) => s + (l.vt || 0), 0))}</b></div>`;
-  if (!vis.length) { $('invTabela').innerHTML = '<div class="vazio">Nenhum ciclo enviado pela Amostragem ainda.</div>'; return; }
+    <div class="chip"><small>Valor total</small><b>${fR(vis.reduce((s, l) => s + (l.vt || 0), 0))}</b></div>
+    ${foraInv ? `<div class="chip" style="border:1px dashed #6B7280;background:#F3F4F6"><small>Fora do Centro de Custo <i>(não incluídos)</i></small><b>${fN(foraInv)}</b></div>` : ''}`;
+  if (!vis.length) { $('invTabela').innerHTML = `<div class="vazio">${linhas.length ? 'Nenhum item encontrado.' : 'Nenhum ciclo enviado pela Amostragem ainda.'}</div>`; return; }
   $('invTabela').innerHTML = `<table><thead><tr><th>Data</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Armazém</th>
     <th class="n">Saldo em Estoque</th><th class="n">Valor Unitário (R$)</th><th class="n">Valor Total (R$)</th><th>Situação do ciclo</th></tr></thead><tbody>
     ${vis.map(l => `<tr><td>${fD(l.c.data_ref)}</td><td>${esc(l.i.codigo)}</td><td class="desc">${esc(l.i.descricao)}</td><td>${esc(l.i.unidade)}</td><td>${esc(l.i.armazem)}</td>
@@ -1205,7 +1208,7 @@ async function desenharDadosInv() {
     <tbody>${lista.map(i => linhaDI(i, editavel)).join('')}</tbody></table>`;
 }
 function linhaDI(i, ed) {
-  const imp = i.divergencia == null || i.valor_unit == null ? null : num(i.divergencia) * num(i.valor_unit);
+  const imp = i.ajuste === FORA_CC || i.divergencia == null || i.valor_unit == null ? null : num(i.divergencia) * num(i.valor_unit);
   const aj = i.ajuste || i.tipo;
   const avisoAj = i.status === 'Divergente' && aj === 'Certo' ? ' title="Item com diferença classificado como Certo"' : '';
   return `<tr data-id="${i.id}"><td>${esc(i.codigo)}</td><td class="desc">${esc(i.descricao)}</td><td>${esc(i.unidade)}</td>
