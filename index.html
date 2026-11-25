@@ -204,6 +204,12 @@
       <div class="barra">
         <select id="invCiclo" aria-label="Ciclo"></select>
         <input id="invBusca" placeholder="Buscar código ou descrição" style="min-width:240px">
+        <select id="invOrdem" aria-label="Ordenar">
+          <option value="">Ordenar: descrição</option>
+          <option value="dif">Ordenar: maior diferença em R$</option>
+          <option value="vt">Ordenar: maior valor após ajuste</option>
+          <option value="manual">Só saldo ajustado manualmente</option>
+        </select>
         <span class="esp"></span>
         <button id="invExport">Exportar Excel</button>
       </div>
@@ -943,7 +949,9 @@ $('amoExportar').onchange = async () => {
 };
 
 /* ---------- item avulso ---------- */
+let avRef = null, avAvisado = '';
 $('amoAvulso').onclick = () => {
+  avRef = null; avAvisado = '';
   ['avCod', 'avDesc', 'avVu', 'avCont'].forEach(id => $(id).value = ''); $('avArm').value = 'CI'; $('avUn').value = 'UN'; $('avSaldo').value = '0';
   $('avErro').textContent = ''; $('avInfo').classList.add('hide'); $('mAv').classList.remove('hide'); setTimeout(() => $('avCod').focus(), 50);
 };
@@ -959,6 +967,7 @@ $('avCod').addEventListener('change', async () => {
     if (r.length) {
       const x = r[0]; $('avDesc').value = x.descricao || ''; $('avUn').value = x.unidade || 'UN'; $('avArm').value = x.armazem || 'CI';
       if (x.valor_unit != null) $('avVu').value = String(num(x.valor_unit)).replace('.', ',');
+      avRef = { vu: num(x.valor_unit), un: x.unidade };
       const ci = cicloPorId(x.ciclo_id);
       $('avInfo').textContent = `Dados preenchidos a partir do ciclo ${ci ? mesCiclo(ci) : 'anterior'}. Confira antes de incluir.`;
     } else $('avInfo').textContent = 'Código não encontrado em ciclos anteriores: preencha os dados.';
@@ -973,6 +982,23 @@ $('avOk').onclick = async () => {
   if (saldo === null || saldo < 0) return $('avErro').textContent = 'Informe o saldo em estoque do sistema (0 se não constar).';
   if ($('avVu').value.trim() && (vu === null || vu < 0)) return $('avErro').textContent = 'Valor unitário inválido.';
   if ($('avCont').value.trim() && (cont === null || cont < 0)) return $('avErro').textContent = 'Amostra conferida inválida.';
+  // ---- aviso automático: valores fora do normal ----
+  if (vu != null) {
+    const qtd = Math.max(saldo || 0, cont || 0), total = qtd * vu, avisos = [];
+    if (avRef && avRef.vu && (vu > avRef.vu * 3 || vu < avRef.vu / 3))
+      avisos.push(`O valor unitário informado (${fR(vu)}) é muito diferente do último valor deste código (${fR(avRef.vu)}).`);
+    if (total > 5000) avisos.push(`Valor total do item: ${fN(qtd)} × ${fR(vu)} = ${fR(total)}.`);
+    if (vu > 1000) avisos.push(`Valor unitário acima de R$ 1.000,00 (${fR(vu)}).`);
+    if (qtd > 1 && Math.abs(vu - (avRef && avRef.vu ? avRef.vu * qtd : -1)) < 0.05)
+      avisos.push(`O valor digitado parece ser o VALOR TOTAL (${fN(qtd)} × ${fR(avRef.vu)}), não o unitário.`);
+    const chave = [cod, saldo, cont, vu].join('|');
+    if (avisos.length && avAvisado !== chave) {
+      avAvisado = chave;
+      $('avErro').innerHTML = '⚠ Confira antes de incluir:<br>• ' + avisos.map(esc).join('<br>• ') +
+        '<br><b>Confira se o campo "Valor unitário" é o valor de 1 unidade (' + esc($('avUn').value || 'UN') + '). Se estiver certo, clique em "Incluir item" novamente.</b>';
+      return;
+    }
+  }
   try {
     carregando(true);
     const novo = await ok(sb.from('itens').insert({ ciclo_id: c.id, codigo: cod, descricao: desc, unidade: $('avUn').value.trim() || null, armazem: $('avArm').value.trim(),
@@ -1206,26 +1232,44 @@ async function linhasInventario() {
   for (const c of alvo.slice().sort((a, b) => a.data_ref.localeCompare(b.data_ref))) {
     (await itensDoCiclo(c.id)).forEach(i => {
       if (i.ajuste === FORA_CC) { foraInv++; return; }      // fora do centro de custo: não entra no inventário
-      const saldo = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema);
-      linhas.push({ c, i, saldo, vu: num(i.valor_unit), vt: i.valor_unit == null ? null : saldo * num(i.valor_unit) });
+      const saldo = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema), vu = num(i.valor_unit);
+      const sis = num(i.saldo_original ?? i.saldo_sistema), vtSis = num(i.valor_total) || 0;
+      const vt = vu == null ? null : Math.round(saldo * vu * 100) / 100;
+      const manual = i.saldo_ajustado != null && i.conferido != null && num(i.saldo_ajustado) !== num(i.conferido);
+      linhas.push({ c, i, saldo, sis, vu, vt, vtSis, dif: (vt || 0) - vtSis, manual });
     });
   }
   return linhas;
 }
+$('invOrdem').onchange = () => desenharInventario();
 async function desenharInventario() {
   const linhas = await linhasInventario();
-  const vis = linhas.filter(l => filtraBusca([l.i], $('invBusca').value).length);
+  let vis = linhas.filter(l => filtraBusca([l.i], $('invBusca').value).length);
+  const o = $('invOrdem').value;
+  if (o === 'dif') vis.sort((a, b) => Math.abs(b.dif) - Math.abs(a.dif));
+  else if (o === 'vt') vis.sort((a, b) => (b.vt || 0) - (a.vt || 0));
+  else if (o === 'manual') vis = vis.filter(l => l.manual);
+  const tSis = vis.reduce((s, l) => s + l.vtSis, 0), tAj = vis.reduce((s, l) => s + (l.vt || 0), 0);
+  const nMan = linhas.filter(l => l.manual).length;
   $('invChips').innerHTML = `<div class="chip"><small>Itens</small><b>${fN(vis.length)}</b></div>
-    <div class="chip"><small>Valor total</small><b>${fR(vis.reduce((s, l) => s + (l.vt || 0), 0))}</b></div>
+    <div class="chip"><small>Valor no sistema (antes)</small><b>${fR(tSis)}</b></div>
+    <div class="chip"><small>Valor após ajustes</small><b>${fR(tAj)}</b></div>
+    <div class="chip"><small>Diferença</small><b class="${tAj - tSis < 0 ? 'neg' : 'pos'}">${fR(tAj - tSis)}</b></div>
+    ${nMan ? `<div class="chip" style="border-color:#F2D48A;background:var(--amarBg);cursor:pointer" id="invChipMan" title="Itens em que o Saldo ajustado foi digitado diferente da contagem"><small>⚠ Saldo ajustado ≠ contagem</small><b>${fN(nMan)}</b></div>` : ''}
     ${foraInv ? `<div class="chip" style="border:1px dashed #6B7280;background:#F3F4F6"><small>Fora do Centro de Custo <i>(não incluídos)</i></small><b>${fN(foraInv)}</b></div>` : ''}`;
+  if ($('invChipMan')) $('invChipMan').onclick = () => { $('invOrdem').value = 'manual'; desenharInventario(); };
   if (!vis.length) { $('invTabela').innerHTML = `<div class="vazio">${linhas.length ? 'Nenhum item encontrado.' : 'Nenhum ciclo enviado pela Amostragem ainda.'}</div>`; return; }
   $('invTabela').innerHTML = `<table><thead><tr><th>Data</th><th>Código</th><th>Descrição</th><th>Unidade</th><th>Armazém</th>
-    <th class="n">Saldo em Estoque</th><th class="n">Valor Unitário (R$)</th><th class="n">Valor Total (R$)</th><th>Situação do ciclo</th></tr></thead><tbody>
+    <th class="n">Saldo sistema</th><th class="n">Saldo ajustado</th><th class="n">Valor Unitário (R$)</th><th class="n">Valor no sistema (R$)</th><th class="n">Valor ajustado (R$)</th><th class="n">Diferença (R$)</th><th>Situação do ciclo</th></tr></thead><tbody>
     ${vis.map(l => `<tr><td>${fD(l.c.data_ref)}</td><td>${esc(l.i.codigo)}</td><td class="desc">${esc(l.i.descricao)}</td><td>${esc(l.i.unidade)}</td><td>${esc(l.i.armazem)}</td>
-      <td class="n">${fN(l.saldo)}</td><td class="n">${fR(l.vu)}</td><td class="n">${fR(l.vt)}</td><td><span class="tag t-${l.c.status}">${STATUS_CICLO[l.c.status]}</span></td></tr>`).join('')}</tbody></table>`;
+      <td class="n">${fN(l.sis)}</td><td class="n">${l.manual ? `<span title="Contagem: ${fN(l.i.conferido)} — saldo ajustado digitado diferente">⚠ </span>` : ''}${fN(l.saldo)}</td>
+      <td class="n">${fR(l.vu)}</td><td class="n">${fR(l.vtSis)}</td><td class="n">${fR(l.vt)}</td>
+      <td class="n ${l.dif < 0 ? 'neg' : l.dif > 0 ? 'pos' : ''}">${l.dif ? fR(l.dif) : '–'}</td>
+      <td><span class="tag t-${l.c.status}">${STATUS_CICLO[l.c.status]}</span></td></tr>`).join('')}</tbody></table>`;
 }
 $('invExport').onclick = async () => exportar('Inventario', (await linhasInventario()).map(l => ({ 'Data': fD(l.c.data_ref), 'Código': l.i.codigo, 'Descrição': l.i.descricao,
-  'Unidade': l.i.unidade, 'Armazém': l.i.armazem, 'Saldo em Estoque': l.saldo, 'Valor Unitário (R$)': l.vu, 'Valor Total (R$)': l.vt })));
+  'Unidade': l.i.unidade, 'Armazém': l.i.armazem, 'Saldo sistema': l.sis, 'Contagem': num(l.i.conferido), 'Saldo ajustado': l.saldo, 'Valor Unitário (R$)': l.vu,
+  'Valor no sistema (R$)': l.vtSis, 'Valor ajustado (R$)': l.vt, 'Diferença (R$)': l.dif, 'Ajuste': l.i.ajuste || l.i.tipo || '', 'Avulso': l.i.avulso ? 'Sim' : '' })));
 
 /* =====================================================================
    DADOS INVENTÁRIO
