@@ -330,12 +330,14 @@
       <div class="barra">
         <select id="dashCiclo" aria-label="Ciclo"></select>
         <span class="esp"></span>
+        <span id="dashSalvaInfo" class="soAdmin"></span>
         <span id="dashPedStatus" class="soLeitor"></span>
         <button class="pri" id="dashVer" title="Abre a apresentação em uma nova aba, só para visualizar">👁 Visualizar apresentação</button>
         <button id="dashPedir" class="soLeitor" title="Envia um pedido ao administrador para liberar o download">Solicitar download</button>
         <button id="dashPdf" title="PDF em imagem: não permite alterar os dados">⬇ Baixar apresentação (PDF somente leitura)</button>
         <button class="soAdmin" id="dashPptx">Baixar apresentação (PowerPoint)</button>
         <button class="soAdmin" id="dashExport">Exportar comparativo</button>
+        <button class="soAdmin" id="dashSalvar" title="Guardar no sistema a apresentação feita manualmente para este ciclo">📎 Apresentação salva…</button>
       </div>
       <div class="kpis" id="dashKpis"></div>
       <div class="grade">
@@ -454,6 +456,21 @@
     <textarea id="pedMotivo" rows="4" placeholder="Ex.: apresentar na reunião de diretoria de 28/11"></textarea>
     <div class="erro" id="pedErro"></div>
     <div class="acoes"><button id="pedCancelar">Cancelar</button><button class="pri" id="pedOk">Enviar pedido</button></div>
+  </div>
+</div>
+
+<!-- MODAL: apresentação salva -->
+<div class="fundoModal hide" id="mApr">
+  <div class="modal">
+    <h2>Apresentação salva do ciclo</h2>
+    <p class="dica" style="margin:0" id="aprInfo"></p>
+    <label for="aprPdf">Slides (PDF de apresentação salva) *</label>
+    <input type="file" id="aprPdf" accept=".pdf,application/pdf">
+    <label for="aprPptx">PowerPoint original (opcional — só o ADM baixa)</label>
+    <input type="file" id="aprPptx" accept=".pptx">
+    <div class="previa hide" id="aprPrevia"></div>
+    <div class="erro" id="aprErro"></div>
+    <div class="acoes"><button class="perigo" id="aprRemover">Remover (voltar ao modelo automático)</button><span style="flex:1"></span><button id="aprCancelar">Cancelar</button><button class="pri" id="aprOk" disabled>Salvar</button></div>
   </div>
 </div>
 
@@ -1615,6 +1632,8 @@ function grafico(id, cfg) { if (graficos[id]) graficos[id].destroy(); graficos[i
 async function telaDashboard() {
   // Só entram ciclos FECHADOS: dados depois dos ajustes em Dados Inventário (o dado inicial é só base)
   resumo = (await ok(sb.from('resumo_ciclos').select('*').order('data_ref'))).filter(r => r.status === 'fechado');
+  salvas = {};
+  try { (await ok(sb.from('apresentacoes_salvas').select('*'))).forEach(x => salvas[x.ciclo_id] = x); } catch (e) { /* tabela ainda não criada */ }
   const lista = resumo.slice().reverse().map(r => cicloPorId(r.id)).filter(Boolean);
   preencherSelect($('dashCiclo'), lista, cicloSelecionado, 'Nenhum ciclo fechado');
   await desenharDashboard();
@@ -1628,7 +1647,9 @@ const totaisCiclo = x => {
 };
 async function desenharDashboard() {
   const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
-  $('dashVer').disabled = $('dashPptx').disabled = !r;
+  $('dashVer').disabled = $('dashPptx').disabled = $('dashSalvar').disabled = !r;
+  const sv = r && salvas[r.id];
+  $('dashSalvaInfo').innerHTML = sv ? `<span class="tag t-correcao" title="Enviada por ${esc((sv.enviado_por || '').split('@')[0])}">📎 Apresentação salva (${sv.slides} slides)</span>` : '';
   if (!ehAdmin) await atualizarPedidoDash(); else $('dashPdf').disabled = !r;
   if (!r) { $('dashKpis').innerHTML = '<div class="vazio">O Dashboard mostra somente ciclos fechados, depois dos ajustes em Dados Inventário.</div>'; return; }
   const t = totaisCiclo(r), pc = a => t.total ? t.q[a] / t.total : null;
@@ -2044,9 +2065,19 @@ async function dadosApresentacao(r) {
 $('dashPptx').onclick = async () => {
   const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
   if (!r) return toast('Selecione um ciclo fechado.', true);
-  if (typeof PptxGenJS === 'undefined') return toast('O gerador de apresentação não carregou. Verifique a internet e atualize a página.', true);
+  if (!salvas[r.id] && typeof PptxGenJS === 'undefined') return toast('O gerador de apresentação não carregou. Verifique a internet e atualize a página.', true);
   carregando(true);
   try {
+    if (salvas[r.id]) {
+      const partes = await buscarTudo(() => sb.from('apresentacao_original').select('parte,nome,dados').eq('ciclo_id', r.id).order('parte'));
+      if (partes.length) {
+        const bin = atob(partes.map(x => x.dados).join('')), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }));
+        a.download = partes[0].nome; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+        return toast(`PowerPoint original baixado: ${partes[0].nome}`);
+      }
+    }
     const d = await dadosApresentacao(r), img = await carregarImagensPpt();
     const pptx = new PptxGenJS();
     const nome = montarApresentacao(pptx, d, img);
@@ -2273,6 +2304,90 @@ function pdfDeImagens(imgs, titulo) {
   return new Blob(partes, { type: 'application/pdf' });
 }
 
+// Imagens da apresentação: a salva (se houver) ou a gerada no modelo automático
+let salvas = {};
+async function imagensApresentacao(r, rodape, escala) {
+  const [ano, mes] = r.data_ref.split('-').map(Number);
+  const titulo = `Inventário Trimestral – ${MESES[mes - 1]} ${ano}`, arquivo = `Inventario_Trimestral_${MESES[mes - 1].normalize('NFD').replace(/[̀-ͯ]/g, '')}_${ano}`;
+  if (salvas[r.id]) {
+    const lst = await buscarTudo(() => sb.from('apresentacao_slides').select('ordem,imagem,largura,altura').eq('ciclo_id', r.id).order('ordem'));
+    return { titulo, arquivo, imgs: rodape ? await comRodape(lst.map(x => x.imagem), rodape) : lst.map(x => ({ url: x.imagem, w: x.largura, h: x.altura })) };
+  }
+  const ap = slidesApresentacao(await dadosApresentacao(r), await carregarImagensPpt());
+  return { titulo, arquivo, imgs: await slidesEmImagem(ap.slides, rodape, escala) };
+}
+async function comRodape(urls, rodape) {
+  const out = [];
+  for (const u of urls) {
+    const im = new Image(); im.src = u; await im.decode();
+    const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+    const g = cv.getContext('2d'), k = cv.width / 1333; g.drawImage(im, 0, 0);
+    g.font = `${11 * k}px Segoe UI, Arial, sans-serif`; g.fillStyle = 'rgba(40,45,69,.75)'; g.textAlign = 'right';
+    g.fillText(rodape, cv.width - 20 * k, cv.height - 22 * k);
+    out.push({ url: cv.toDataURL('image/jpeg', 0.9), w: cv.width, h: cv.height });
+  }
+  return out;
+}
+// Lê as imagens JPEG de um PDF de slides (uma imagem por página)
+function jpegsDoPdf(buf) {
+  const b = new Uint8Array(buf), txt = new TextDecoder('latin1').decode(b), out = [];
+  const re = /<<((?:(?!>>\s*stream)[^])*?\/Subtype\s*\/Image(?:(?!>>\s*stream)[^])*?)>>\s*stream\r?\n/g; let m;
+  while ((m = re.exec(txt))) {
+    const d = m[1], len = +(d.match(/\/Length\s+(\d+)(?!\s+\d+\s+R)/) || [])[1];
+    if (!/DCTDecode/.test(d) || !len) continue;
+    const w = +(d.match(/\/Width\s+(\d+)/) || [])[1], h = +(d.match(/\/Height\s+(\d+)/) || [])[1];
+    if (w < 800 || !h || Math.abs(w / h - 16 / 9) > 0.15) continue;   // só imagens de slide inteiro
+    const ini = m.index + m[0].length; out.push({ bytes: b.subarray(ini, ini + len), w, h }); re.lastIndex = ini + len;
+  }
+  return out;
+}
+function paraBase64(bytes) {
+  let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+let aprLido = null;
+$('dashSalvar').onclick = () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r) return;
+  aprLido = null; $('aprPdf').value = $('aprPptx').value = ''; $('aprErro').textContent = ''; $('aprPrevia').classList.add('hide'); $('aprOk').disabled = true;
+  const sv = salvas[r.id];
+  $('aprInfo').innerHTML = `Ciclo <b>${mesCiclo(r)}</b>. ${sv ? `Já tem apresentação salva (${sv.slides} slides): enviar de novo substitui.` : 'Hoje usa o modelo automático.'}<br>Com apresentação salva, o sistema usa ela para visualizar, baixar o PDF e (ADM) baixar o PowerPoint original.`;
+  $('aprRemover').classList.toggle('hide', !sv); $('mApr').classList.remove('hide');
+};
+$('aprCancelar').onclick = () => $('mApr').classList.add('hide');
+$('aprPdf').onchange = async () => {
+  const f = $('aprPdf').files[0]; aprLido = null; $('aprOk').disabled = true; $('aprErro').textContent = ''; if (!f) return;
+  const jp = jpegsDoPdf(await f.arrayBuffer());
+  if (!jp.length) { $('aprPrevia').classList.add('hide'); return $('aprErro').textContent = 'Este PDF não tem slides em imagem. Use o arquivo "Apresentacao_salva_…pdf" enviado junto com o sistema (ou um PDF baixado do próprio sistema).'; }
+  aprLido = jp.map(x => ({ url: 'data:image/jpeg;base64,' + paraBase64(x.bytes), w: x.w, h: x.h }));
+  $('aprPrevia').innerHTML = `${aprLido.length} slide(s) encontrados:<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${aprLido.map(x => `<img src="${x.url}" style="width:88px;border:1px solid var(--borda)">`).join('')}</div>`;
+  $('aprPrevia').classList.remove('hide'); $('aprOk').disabled = false;
+};
+$('aprOk').onclick = async () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r || !aprLido) return;
+  try {
+    carregando(true);
+    await ok(sb.from('apresentacao_slides').delete().eq('ciclo_id', r.id));
+    for (let i = 0; i < aprLido.length; i++) await ok(sb.from('apresentacao_slides').insert({ ciclo_id: r.id, ordem: i + 1, imagem: aprLido[i].url, largura: aprLido[i].w, altura: aprLido[i].h }));
+    const pp = $('aprPptx').files[0];
+    if (pp) {
+      const b64 = paraBase64(new Uint8Array(await pp.arrayBuffer())), TAM = 1500000;
+      await ok(sb.from('apresentacao_original').delete().eq('ciclo_id', r.id));
+      for (let k = 0; k * TAM < b64.length; k++) await ok(sb.from('apresentacao_original').insert({ ciclo_id: r.id, parte: k + 1, nome: pp.name, dados: b64.slice(k * TAM, (k + 1) * TAM) }));
+    }
+    $('mApr').classList.add('hide'); toast(`Apresentação de ${mesCiclo(r)} salva (${aprLido.length} slides${pp ? ' + PowerPoint original' : ''}).`);
+    await telaDashboard();
+  } catch (e) { $('aprErro').textContent = e.message; } finally { carregando(false); }
+};
+$('aprRemover').onclick = async () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r) return;
+  if (!confirm(`Remover a apresentação salva de ${mesCiclo(r)}? O ciclo volta a usar o modelo automático.`)) return;
+  try {
+    carregando(true);
+    await ok(sb.from('apresentacao_slides').delete().eq('ciclo_id', r.id)); await ok(sb.from('apresentacao_original').delete().eq('ciclo_id', r.id));
+    $('mApr').classList.add('hide'); toast('Apresentação salva removida.'); await telaDashboard();
+  } catch (e) { falha(e); } finally { carregando(false); }
+};
+
 const agoraBR = () => new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 $('dashVer').onclick = async () => {
   const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r) return toast('Selecione um ciclo fechado.', true);
@@ -2281,9 +2396,9 @@ $('dashVer').onclick = async () => {
   w.document.write('<!DOCTYPE html><meta charset="UTF-8"><title>Gerando apresentação…</title><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#1f2430;color:#fff;font-family:Segoe UI,Arial,sans-serif">Gerando a apresentação…</body>');
   w.document.close();
   try {
-    const ap = slidesApresentacao(await dadosApresentacao(r), await carregarImagensPpt());
     const marca = `${perfil.usuario} · ${agoraBR()}`;
-    const imgs = await slidesEmImagem(ap.slides, null, 1.5);
+    const { titulo: tituloAp, imgs } = await imagensApresentacao(r, null, 1.5);
+    const ap = { titulo: tituloAp };
     w.document.open();
     w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${esc(ap.titulo)} – somente visualização</title><style>
       body{margin:0;background:#1f2430;font-family:Segoe UI,Arial,sans-serif;-webkit-user-select:none;user-select:none}
@@ -2310,8 +2425,7 @@ $('dashPdf').onclick = async () => {
   carregando(true);
   try {
     if (!ehAdmin) { await ok(sb.rpc('registrar_download', { p_id: pedidoAtual ? pedidoAtual.id : 0 })); }
-    const ap = slidesApresentacao(await dadosApresentacao(r), await carregarImagensPpt());
-    const imgs = await slidesEmImagem(ap.slides, `Documento somente leitura · baixado por ${perfil.usuario} em ${agoraBR()}`, 2);
+    const ap = await imagensApresentacao(r, `Documento somente leitura · baixado por ${perfil.usuario} em ${agoraBR()}`, 2), imgs = ap.imgs;
     const a = document.createElement('a'); a.href = URL.createObjectURL(pdfDeImagens(imgs, ap.titulo)); a.download = ap.arquivo + '.pdf';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
     toast('PDF gerado (somente leitura).');
