@@ -118,6 +118,13 @@
   .kpi b{font-size:22px;display:block;margin-top:2px}
   .kpi span{font-size:12px;color:var(--mut)}
   canvas{max-height:280px}
+  .leitor .soAdmin{display:none!important}
+  body:not(.leitor) .soLeitor{display:none!important}
+  .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--verm);color:#fff;font-size:11px;font-weight:700;text-align:center;margin-left:4px}
+  .badge:empty{display:none}
+  #telaSenha{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+  .cartao textarea,.modal textarea{width:100%;font:inherit;padding:7px 9px;border:1px solid var(--borda);border-radius:6px;resize:vertical}
+  .regras{font-size:12px;color:var(--mut);margin-top:8px}
   @media (max-width:640px){main{padding:12px 10px 40px} .chip{min-width:46%} header b{font-size:15px} .barra select{max-width:100%} .opc{display:none} td.desc{min-width:130px}}
 </style>
 </head>
@@ -144,21 +151,41 @@
   </form>
 </div>
 
+<!-- ============================ TROCA DE SENHA ============================ -->
+<div id="telaSenha" class="hide">
+  <form class="cartao" id="formSenha">
+    <h1>Alterar senha</h1>
+    <p id="pwTexto">Defina a sua senha pessoal.</p>
+    <div id="pwAtualBloco"><label for="pwAtual">Senha atual</label>
+    <div class="campoSenha"><input id="pwAtual" type="password" autocomplete="current-password"><button type="button" class="olho" data-olho="pwAtual" aria-label="Mostrar senha" title="Mostrar senha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
+    <label for="pwNova">Nova senha</label>
+    <div class="campoSenha"><input id="pwNova" type="password" autocomplete="new-password" required><button type="button" class="olho" data-olho="pwNova" aria-label="Mostrar senha" title="Mostrar senha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    <label for="pwConf">Repita a nova senha</label>
+    <div class="campoSenha"><input id="pwConf" type="password" autocomplete="new-password" required><button type="button" class="olho" data-olho="pwConf" aria-label="Mostrar senha" title="Mostrar senha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    <div class="regras">Mínimo de 6 caracteres e diferente da senha provisória 123456.</div>
+    <button class="pri" type="submit">Salvar nova senha</button>
+    <button type="button" id="pwCancelar" style="margin-top:8px">Cancelar</button>
+    <div class="erro" id="pwErro"></div>
+  </form>
+</div>
+
 <!-- ============================ SISTEMA ============================ -->
 <div id="telaApp" class="hide">
   <header>
     <b>Controle de Estoque</b>
     <span id="usuario"></span>
+    <button id="btnSenha">Alterar senha</button>
     <button id="btnSair">Sair</button>
   </header>
   <nav id="abas">
-    <button data-aba="amostragem" class="ativo">Amostragem</button>
-    <button data-aba="inventario">Inventário</button>
-    <button data-aba="dadosinv">Dados Inventário</button>
-    <button data-aba="estoque">Estoque</button>
-    <button data-aba="hoje">Dados Estoque Hoje</button>
+    <button data-aba="amostragem" class="ativo soAdmin">Amostragem</button>
+    <button data-aba="inventario" class="soAdmin">Inventário</button>
+    <button data-aba="dadosinv" class="soAdmin">Dados Inventário</button>
+    <button data-aba="estoque" class="soAdmin">Estoque</button>
+    <button data-aba="hoje" class="soAdmin">Dados Estoque Hoje</button>
     <button data-aba="dashboard">Dashboard</button>
-    <button data-aba="ocultos" title="Itens com saldo corrigido para zero e contagem zero" style="margin-left:auto;font-size:13px">🔒 Ocultos</button>
+    <button data-aba="ocultos" class="soAdmin" title="Itens com saldo corrigido para zero e contagem zero" style="margin-left:auto;font-size:13px">🔒 Ocultos</button>
+    <button data-aba="usuarios" class="soAdmin" style="font-size:13px">👤 Usuários e pedidos<span class="badge" id="badgePed"></span></button>
   </nav>
   <main>
 
@@ -283,13 +310,32 @@
       <div class="tabela" id="ocTabela"></div>
     </section>
 
+    <!-- USUÁRIOS E PEDIDOS (somente ADM) -->
+    <section id="aba-usuarios" class="hide">
+      <div class="painel" style="margin-bottom:12px">
+        <h3>Pedidos de download da apresentação</h3>
+        <div class="tabela" id="usPedidos" style="max-height:none"></div>
+      </div>
+      <div class="painel">
+        <div class="barra" style="margin-bottom:8px"><h3 style="margin:0">Usuários</h3><span class="esp"></span>
+          <input id="usNovoUser" placeholder="usuário (ex.: nome.sobrenome)" style="min-width:200px" autocapitalize="none">
+          <input id="usNovoEmail" placeholder="e-mail" style="min-width:240px" type="email">
+          <button class="pri" id="usCriar">+ Criar usuário (Visualização, senha 123456)</button></div>
+        <div class="tabela" id="usTabela" style="max-height:none"></div>
+      </div>
+    </section>
+
     <!-- DASHBOARD -->
     <section id="aba-dashboard" class="hide">
       <div class="barra">
         <select id="dashCiclo" aria-label="Ciclo"></select>
         <span class="esp"></span>
-        <button class="pri" id="dashPptx">Baixar apresentação (PowerPoint)</button>
-        <button id="dashExport">Exportar comparativo</button>
+        <span id="dashPedStatus" class="soLeitor"></span>
+        <button class="pri" id="dashVer" title="Abre a apresentação em uma nova aba, só para visualizar">👁 Visualizar apresentação</button>
+        <button id="dashPedir" class="soLeitor" title="Envia um pedido ao administrador para liberar o download">Solicitar download</button>
+        <button id="dashPdf" title="PDF em imagem: não permite alterar os dados">⬇ Baixar apresentação (PDF somente leitura)</button>
+        <button class="soAdmin" id="dashPptx">Baixar apresentação (PowerPoint)</button>
+        <button class="soAdmin" id="dashExport">Exportar comparativo</button>
       </div>
       <div class="kpis" id="dashKpis"></div>
       <div class="grade">
@@ -303,7 +349,7 @@
       <div class="painel" style="margin-bottom:12px"><h3>Comparativo geral por ciclo</h3><div class="tabela" id="dashTabela" style="max-height:none"></div></div>
       <div class="painel" style="margin-bottom:12px"><h3>Classificação por ciclo</h3><canvas id="gComp"></canvas></div>
       <div class="painel" style="margin-bottom:12px"><h3>10 maiores ajustes do ciclo (R$)</h3><div class="tabela" id="dashTop" style="max-height:none"></div></div>
-      <div class="painel" style="border-left:4px solid #6B7280;border-radius:0 8px 8px 0"><div class="barra" style="margin-bottom:6px"><h3 style="margin:0">Itens fora do centro de custo (somente consulta – não entram no inventário nem na apresentação)</h3><span class="esp"></span><button id="dashForaRel">Emitir relatório (Excel)</button></div><div id="dashFora"></div></div>
+      <div class="painel" style="border-left:4px solid #6B7280;border-radius:0 8px 8px 0"><div class="barra" style="margin-bottom:6px"><h3 style="margin:0">Itens fora do centro de custo (somente consulta – não entram no inventário nem na apresentação)</h3><span class="esp"></span><button id="dashForaRel" class="soAdmin">Emitir relatório (Excel)</button></div><div id="dashFora"></div></div>
     </section>
   </main>
 </div>
@@ -399,6 +445,18 @@
   </div>
 </div>
 
+<!-- MODAL: pedido de download -->
+<div class="fundoModal hide" id="mPed">
+  <div class="modal">
+    <h2>Solicitar download da apresentação</h2>
+    <p class="dica" style="margin:0" id="pedInfo"></p>
+    <label for="pedMotivo">Motivo *</label>
+    <textarea id="pedMotivo" rows="4" placeholder="Ex.: apresentar na reunião de diretoria de 28/11"></textarea>
+    <div class="erro" id="pedErro"></div>
+    <div class="acoes"><button id="pedCancelar">Cancelar</button><button class="pri" id="pedOk">Enviar pedido</button></div>
+  </div>
+</div>
+
 <div id="toast" class="hide"></div>
 <div id="carregando" class="hide">Carregando…</div>
 
@@ -421,7 +479,7 @@ const AJUSTES = ['Certo', 'Baixa', 'Baixa 24 Horas', 'Falha Protheus', FORA_CC];
 const STATUS_CICLO = { conferencia: 'Pendente – contagem', correcao: 'Pendente – correção', fechado: 'Finalizado' };
 const NOMES_MES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const mesCiclo = c => `${NOMES_MES[+c.data_ref.slice(5, 7) - 1]}/${c.data_ref.slice(0, 4)}`;
-let sb = null, ciclos = [], usuarioEmail = '';
+let sb = null, ciclos = [], usuarioEmail = '', perfil = null, ehAdmin = false, senhaDigitada = '';
 const cache = {};          // itens por ciclo
 const graficos = {};
 
@@ -585,6 +643,7 @@ $('formLogin').addEventListener('submit', async e => {
     if (e1) throw e1;
     if (!email) { $('erroLogin').textContent = 'Usuário ou senha incorretos.'; return; }
     const { data, error } = await sb.auth.signInWithPassword({ email, password: $('senha').value });
+    senhaDigitada = error ? '' : $('senha').value;
     if (error) { $('erroLogin').textContent = /Invalid login/i.test(error.message) ? 'Usuário ou senha incorretos.' : error.message; return; }
     entrar(data.session);
   } catch (err) {
@@ -599,21 +658,100 @@ $('btnOlho').onclick = () => {
   s.focus();
 };
 async function entrar(sessao) {
-  usuarioEmail = sessao.user.email; $('usuario').textContent = usuarioEmail.split('@')[0];
-  $('telaLogin').classList.add('hide'); $('telaApp').classList.remove('hide');
+  usuarioEmail = sessao.user.email;
+  try { perfil = await ok(sb.rpc('meu_perfil')); }
+  catch (e) {   // banco ainda sem perfis (perfis_acesso.sql não rodado): funciona como antes
+    perfil = /meu_perfil|schema cache|does not exist/i.test(e.message || '') ? { usuario: usuarioEmail.split('@')[0], papel: 'admin', trocar_senha: false, ativo: true, semPerfis: true } : null;
+  }
+  if (!perfil || !perfil.ativo) {
+    await sb.auth.signOut(); sair(true);
+    $('erroLogin').textContent = 'Usuário sem acesso liberado. Fale com o administrador.'; return;
+  }
+  ehAdmin = perfil.papel === 'admin';
+  document.body.classList.toggle('leitor', !ehAdmin);
+  $('usuario').textContent = `${perfil.usuario} · ${ehAdmin ? 'ADM' : 'Visualização'}`;
+  $('btnSenha').classList.toggle('hide', !!perfil.semPerfis);
+  if (perfil.trocar_senha) return abrirTrocaSenha(true);
+  await mostrarApp();
+}
+async function mostrarApp() {
+  $('telaLogin').classList.add('hide'); $('telaSenha').classList.add('hide'); $('telaApp').classList.remove('hide');
   await carregarCiclos();
-  abrirAba('amostragem');
+  abrirAba(ehAdmin ? 'amostragem' : 'dashboard');
+  iniciarAvisos();
 }
 async function sair(jaSaiu) {
   if (!jaSaiu && sb) await sb.auth.signOut();
+  clearInterval(iniciarAvisos.h); perfil = null; ehAdmin = false; senhaDigitada = '';
+  Object.keys(cache).forEach(k => delete cache[k]);
+  $('telaSenha').classList.add('hide');
   $('telaApp').classList.add('hide'); $('telaLogin').classList.remove('hide'); $('senha').value = ''; $('senha').type = 'password'; $('olhoAberto').classList.remove('hide'); $('olhoFechado').classList.add('hide');
 }
 $('btnSair').onclick = () => sair(false);
+
+/* ---------- troca de senha ---------- */
+let senhaForcada = false;
+function abrirTrocaSenha(forcada) {
+  senhaForcada = forcada;
+  ['pwAtual', 'pwNova', 'pwConf'].forEach(id => { $(id).value = ''; $(id).type = 'password'; });
+  $('pwErro').textContent = '';
+  $('pwAtualBloco').classList.toggle('hide', forcada && !!senhaDigitada);
+  $('pwCancelar').classList.toggle('hide', forcada);
+  $('pwTexto').textContent = forcada ? `Olá, ${perfil.usuario}! Você entrou com a senha provisória. Crie agora a sua senha pessoal para continuar.` : 'Defina a sua nova senha.';
+  $('telaLogin').classList.add('hide'); $('telaApp').classList.add('hide'); $('telaSenha').classList.remove('hide');
+  setTimeout(() => (forcada && senhaDigitada ? $('pwNova') : $('pwAtual')).focus(), 50);
+}
+$('btnSenha').onclick = () => { senhaDigitada = ''; abrirTrocaSenha(false); };
+$('pwCancelar').onclick = () => { $('telaSenha').classList.add('hide'); $('telaApp').classList.remove('hide'); };
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-olho]'); if (!b) return;
+  const inp = $(b.dataset.olho); inp.type = inp.type === 'password' ? 'text' : 'password'; inp.focus();
+});
+$('formSenha').addEventListener('submit', async e => {
+  e.preventDefault(); $('pwErro').textContent = '';
+  const atual = senhaForcada && senhaDigitada ? senhaDigitada : $('pwAtual').value, nova = $('pwNova').value;
+  if (!atual) return $('pwErro').textContent = 'Informe a senha atual.';
+  if (nova.length < 6) return $('pwErro').textContent = 'A nova senha precisa ter pelo menos 6 caracteres.';
+  if (nova === '123456') return $('pwErro').textContent = 'A nova senha não pode ser a provisória 123456.';
+  if (nova !== $('pwConf').value) return $('pwErro').textContent = 'As duas senhas não são iguais.';
+  carregando(true);
+  try {
+    await ok(sb.rpc('alterar_minha_senha', { p_atual: atual, p_nova: nova }));
+    senhaDigitada = ''; perfil.trocar_senha = false;
+    toast('Senha alterada com sucesso.');
+    if (senhaForcada) await mostrarApp(); else { $('telaSenha').classList.add('hide'); $('telaApp').classList.remove('hide'); }
+  } catch (err) { $('pwErro').textContent = err.message; } finally { carregando(false); }
+});
+
+/* ---------- avisos (pedidos de download) ---------- */
+let pendentesVistos = null;
+function iniciarAvisos() {
+  clearInterval(iniciarAvisos.h);
+  if (perfil.semPerfis) return;
+  verificarAvisos(); iniciarAvisos.h = setInterval(verificarAvisos, 60000);
+}
+async function verificarAvisos() {
+  try {
+    if (ehAdmin) {
+      const pend = await ok(sb.from('pedidos_download').select('id,usuario').eq('status', 'pendente'));
+      $('badgePed').textContent = pend.length || '';
+      if (pendentesVistos && pend.some(x => !pendentesVistos.includes(x.id)))
+        toast(`Novo pedido de download de ${pend.find(x => !pendentesVistos.includes(x.id)).usuario}. Veja em "Usuários e pedidos".`);
+      pendentesVistos = pend.map(x => x.id);
+    } else if (abaAtual === 'dashboard') {
+      const antes = pedidoAtual && pedidoAtual.status;
+      await atualizarPedidoDash();
+      if (antes === 'pendente' && pedidoAtual && pedidoAtual.status !== 'pendente')
+        toast(pedidoAtual.status === 'aprovado' ? 'Seu download foi liberado pelo administrador.' : 'Seu pedido de download foi recusado.', pedidoAtual.status !== 'aprovado');
+    }
+  } catch (e) { /* silencioso */ }
+}
 
 /* ---------- abas ---------- */
 let abaAtual = 'amostragem';
 $('abas').addEventListener('click', e => { const b = e.target.closest('button[data-aba]'); if (b) abrirAba(b.dataset.aba); });
 async function abrirAba(aba) {
+  if (!ehAdmin && aba !== 'dashboard') aba = 'dashboard';
   abaAtual = aba;
   document.querySelectorAll('#abas button').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
   document.querySelectorAll('main > section').forEach(s => s.classList.toggle('hide', s.id !== 'aba-' + aba));
@@ -626,6 +764,7 @@ async function abrirAba(aba) {
     if (aba === 'hoje') await telaHoje();
     if (aba === 'dashboard') await telaDashboard();
     if (aba === 'ocultos') await telaOcultos();
+    if (aba === 'usuarios') await telaUsuarios();
   } catch (e) { falha(e); } finally { carregando(false); }
 }
 
@@ -1489,6 +1628,8 @@ const totaisCiclo = x => {
 };
 async function desenharDashboard() {
   const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
+  $('dashVer').disabled = $('dashPptx').disabled = !r;
+  if (!ehAdmin) await atualizarPedidoDash(); else $('dashPdf').disabled = !r;
   if (!r) { $('dashKpis').innerHTML = '<div class="vazio">O Dashboard mostra somente ciclos fechados, depois dos ajustes em Dados Inventário.</div>'; return; }
   const t = totaisCiclo(r), pc = a => t.total ? t.q[a] / t.total : null;
   const k = resumo.indexOf(r), ant = k > 0 ? totaisCiclo(resumo[k - 1]) : null;
@@ -1891,26 +2032,371 @@ function montarApresentacao(pptx, d, img) {
   return `Inventario_Trimestral_${nomeMes.normalize('NFD').replace(/[̀-ͯ]/g, '')}_${ano}.pptx`;
 }
 
+async function dadosApresentacao(r) {
+  const anteriores = resumo.slice(0, resumo.indexOf(r)).map(x => ({ ciclo: x, t: totaisCiclo(x) }));
+  const itens = await itensDoCiclo(r.id);
+  const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.ajuste !== FORA_CC && i.valor_unit != null)
+    .map(i => { const s = num(i.saldo_sistema), aj = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema);
+      return { codigo: i.codigo, descricao: i.descricao, saldo: s, ajustado: aj, dif: aj - s, ajuste: i.ajuste, imp: (aj - s) * num(i.valor_unit) }; })
+    .filter(x => x.dif).sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
+  return { ciclo: r, t: totaisCiclo(r), valor: num(r.valor_ajustado), anteriores, top };
+}
 $('dashPptx').onclick = async () => {
   const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
   if (!r) return toast('Selecione um ciclo fechado.', true);
   if (typeof PptxGenJS === 'undefined') return toast('O gerador de apresentação não carregou. Verifique a internet e atualize a página.', true);
   carregando(true);
   try {
-    const anteriores = resumo.slice(0, resumo.indexOf(r)).map(x => ({ ciclo: x, t: totaisCiclo(x) }));
-    const itens = await itensDoCiclo(r.id);
-    const top = itens.filter(i => i.ajuste && i.ajuste !== 'Certo' && i.ajuste !== FORA_CC && i.valor_unit != null)
-      .map(i => { const s = num(i.saldo_sistema), aj = num(i.saldo_ajustado ?? i.conferido ?? i.saldo_sistema);
-        return { codigo: i.codigo, descricao: i.descricao, saldo: s, ajustado: aj, dif: aj - s, ajuste: i.ajuste, imp: (aj - s) * num(i.valor_unit) }; })
-      .filter(x => x.dif).sort((a, b) => Math.abs(b.imp) - Math.abs(a.imp)).slice(0, 10);
-    const img = await carregarImagensPpt();
+    const d = await dadosApresentacao(r), img = await carregarImagensPpt();
     const pptx = new PptxGenJS();
-    const nome = montarApresentacao(pptx, { ciclo: r, t: totaisCiclo(r), valor: num(r.valor_ajustado), anteriores, top }, img);
+    const nome = montarApresentacao(pptx, d, img);
     await pptx.writeFile({ fileName: nome });
     const faltam = IMAGENS_PPT.length - Object.keys(img).length;
     toast(`Apresentação gerada: ${nome}` + (faltam ? ` (${faltam} imagem(ns) não encontrada(s) na pasta apresentacao/)` : ''), !!faltam);
   } catch (e) { falha(e); } finally { carregando(false); }
 };
+
+
+/* =====================================================================
+   APRESENTAÇÃO EM IMAGEM — visualização em nova aba e PDF somente leitura
+   (mesmo conteúdo da apresentação PowerPoint, desenhado como imagem)
+   ===================================================================== */
+const ptPx = pt => Math.round(pt * 100 / 72 * 10) / 10;
+function slidesApresentacao(d, img) {
+  const P = PPT, ORD = ['Baixa', 'Baixa 24 Horas', 'Certo', 'Falha Protheus'];
+  const [ano, mes] = d.ciclo.data_ref.split('-').map(Number);
+  const nomeMes = MESES[mes - 1], periodo = `${nomeMes} ${ano}`;
+  const t = d.t, pc = a => t.total ? t.q[a] / t.total : null;
+  const ant = d.anteriores.length ? d.anteriores[d.anteriores.length - 1] : null;
+  const nomeAnt = ant ? `${MESES[+ant.ciclo.data_ref.slice(5, 7) - 1]}/${ant.ciclo.data_ref.slice(0, 4)}` : '';
+  const pcA = (x, a) => x.t.total ? x.t.q[a] / x.t.total : 0;
+  const FT = "'Kanit Light','Kanit','Segoe UI',Arial,sans-serif", FC = "'Segoe UI',Arial,sans-serif";
+  const box = (x, y, w, h, inner, st = '') => `<div style="position:absolute;left:${x * 100}px;top:${y * 100}px;width:${w * 100}px;height:${h * 100}px;box-sizing:border-box;${st}">${inner}</div>`;
+  const tx = (x, y, w, h, html, o = {}) => box(x, y, w, h, `<div>${html}</div>`,
+    `display:flex;flex-direction:column;justify-content:${o.valign === 'top' ? 'flex-start' : 'center'};text-align:${o.align || 'left'};font-family:${o.font || FC};font-size:${ptPx(o.size || 12)}px;color:#${o.cor || P.txt};font-weight:${o.bold ? 700 : 400};line-height:1.25;`);
+  const im = (n, x, y, w, h, fit = 'cover') => img[n] ? box(x, y, w, h, `<img src="${img[n]}" style="width:100%;height:100%;object-fit:${fit};display:block" />`) : '';
+  const card = (x, y, w, h, st = '') => box(x, y, w, h, '', `background:#fff;border:1px solid #${P.borda};${st}`);
+  const faixa = (x, y, h, cor) => box(x, y, 0.06, h, '', `background:#${cor}`);
+  const barras = [0, 7.35].map(y => box(0.74, y, 8.69, 0.13, '', `background:#${P.laranja}`) + box(9.43, y, 1.33, 0.13, '', `background:#${P.amarelo}`) + box(10.76, y, 1.82, 0.13, '', `background:#${P.verde}`)).join('');
+  const titulo = (ti, sub, o = {}) => (ti ? tx(o.x ?? 0.72, o.y ?? 0.57, o.w ?? 11, 0.65, esc(ti), { font: FT, size: ti.length > 40 ? 28 : 34, cor: P.navy }) : '') +
+    (sub ? tx(o.x ?? 0.72, (o.y ?? 0.57) + 0.72, o.w ?? 11, 0.35, sub, { font: FT, size: 17, cor: P.navy }) : '');
+  const slides = [];
+  const slide = (html, o = {}) => slides.push(`<div style="position:relative;width:1333px;height:750px;background:#${P.fundo};overflow:hidden;font-family:${FC}">${o.base === false ? '' : barras + im('logo.png', 12.0, 0.3, 0.9, 0.75, 'contain')}${html}</div>`);
+  const svg = (x, y, w, h, inner) => box(x, y, w, h, `<svg xmlns="http://www.w3.org/2000/svg" width="${w * 100}" height="${h * 100}" viewBox="0 0 ${w * 100} ${h * 100}" font-family="Segoe UI,Arial,sans-serif">${inner}</svg>`);
+  const T = (x, y, s, o = {}) => `<text x="${x}" y="${y}" font-size="${o.size || 12}" fill="${o.cor || '#374151'}" text-anchor="${o.anchor || 'middle'}" font-weight="${o.bold ? 700 : 400}">${esc(s)}</text>`;
+
+  // gráfico de colunas
+  const colunas = (W, H, titulo, rot, vals, cores) => {
+    const m = { l: 50, r: 15, t: 40, b: 40 }, aw = W - m.l - m.r, ah = H - m.t - m.b, max = Math.max(1, ...vals);
+    const passo = Math.pow(10, Math.floor(Math.log10(max))) * (max / Math.pow(10, Math.floor(Math.log10(max))) > 5 ? 2 : max / Math.pow(10, Math.floor(Math.log10(max))) > 2 ? 1 : 0.5);
+    const topo = Math.ceil(max / passo) * passo; let g = T(W / 2, 22, titulo, { size: 15, cor: '#5B6477' });
+    for (let v = 0; v <= topo + 1e-9; v += passo) { const y = m.t + ah - v / topo * ah; g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="#E5E7EB"/>` + T(m.l - 6, y + 4, numBR(v), { size: 11, anchor: 'end', cor: '#6B7280' }); }
+    const bw = aw / vals.length;
+    vals.forEach((v, k) => { const h = v / topo * ah, x = m.l + k * bw + bw * 0.2;
+      g += `<rect x="${x}" y="${m.t + ah - h}" width="${bw * 0.6}" height="${h}" fill="#${cores[k]}"/>` + T(x + bw * 0.3, m.t + ah - h - 6, numBR(v), { size: 13, bold: true, cor: '#1F2937' }) + T(m.l + k * bw + bw / 2, H - m.b + 20, rot[k], { size: 13 }); });
+    return g;
+  };
+  // pizza
+  const pizza = (W, H, vals, cores, rot) => {
+    const tot = vals.reduce((a, b) => a + b, 0) || 1, cx = W * 0.38, cy = H / 2, r = Math.min(W * 0.34, H * 0.4); let a0 = -Math.PI / 2, g = '', peq = 0;
+    vals.forEach((v, k) => { if (!v) return; const a1 = a0 + v / tot * 2 * Math.PI, grande = a1 - a0 > Math.PI ? 1 : 0;
+      g += v === tot ? `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#${cores[k]}"/>`
+        : `<path d="M${cx},${cy} L${cx + r * Math.cos(a0)},${cy + r * Math.sin(a0)} A${r},${r} 0 ${grande} 1 ${cx + r * Math.cos(a1)},${cy + r * Math.sin(a1)} Z" fill="#${cores[k]}" stroke="#fff" stroke-width="2"/>`;
+      const am = (a0 + a1) / 2, rr = v / tot < 0.06 ? r * (peq++ % 2 ? 1.32 : 1.12) : r * 0.62;
+      g += T(cx + rr * Math.cos(am), cy + rr * Math.sin(am) + 5, pctBR(v / tot), { size: 14, bold: true, cor: '#111' }); a0 = a1; });
+    rot.forEach((l, k) => { const y = cy - rot.length * 14 + k * 28; g += `<rect x="${W * 0.78}" y="${y - 10}" width="14" height="14" fill="#${cores[k]}"/>` + T(W * 0.78 + 20, y + 2, l, { size: 13, anchor: 'start' }); });
+    return g;
+  };
+  // linha
+  const linha = (W, H, titulo, rot, vals, cor) => {
+    const m = { l: 50, r: 25, t: 45, b: 40 }, aw = W - m.l - m.r, ah = H - m.t - m.b; let g = T(W / 2, 22, titulo, { size: 15, cor: '#5B6477' });
+    for (let v = 0; v <= 100; v += 20) { const y = m.t + ah - v / 100 * ah; g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y}" y2="${y}" stroke="#E5E7EB"/>` + T(m.l - 6, y + 4, v + '%', { size: 11, anchor: 'end', cor: '#6B7280' }); }
+    const px = k => m.l + (vals.length === 1 ? aw / 2 : k * aw / (vals.length - 1)), py = v => m.t + ah - v / 100 * ah;
+    g += `<polyline fill="none" stroke="#${cor}" stroke-width="4" points="${vals.map((v, k) => `${px(k)},${py(v)}`).join(' ')}"/>`;
+    vals.forEach((v, k) => { g += `<circle cx="${px(k)}" cy="${py(v)}" r="6" fill="#${cor}"/>` + T(px(k), py(v) - 12, pctBR(v / 100), { size: 13, bold: true, cor: '#1F2937' }) + T(px(k), H - m.b + 22, rot[k], { size: 13 }); });
+    return g;
+  };
+  const tabela = (x, y, w, colW, linhas, o = {}) => box(x, y, w, (linhas.length) * (o.rowH || 0.5), `<table style="width:100%;border-collapse:collapse;font-family:${FC};font-size:${ptPx(o.size || 12)}px;color:#${P.txt}">${linhas.map((l, k) =>
+    `<tr style="height:${(o.rowH || 0.5) * 100}px">${l.map((c, j) => { const cc = typeof c === 'object' ? c : { t: c }; return `<td style="border:1px solid #C9CDD4;background:#fff;padding:2px 8px;width:${colW[j] * 100}px;text-align:${cc.align || (j ? 'center' : 'left')};font-weight:${cc.bold || (k === 0 && o.cab !== false) ? 700 : 400};color:#${cc.cor || P.txt}">${esc(cc.t)}</td>`; }).join('')}</tr>`).join('')}</table>`);
+
+  /* 1 — capa */
+  slide(tx(0, 0.25, 13.33, 1.1, 'CIMI', { align: 'center', font: "'Arial Black',Arial,sans-serif", size: 60, bold: true, cor: '111111' }) +
+    tx(0, 1.3, 13.33, 0.35, 'CENTRAL INTEGRADA DE MANUTENÇÃO DA INFRAESTRUTURA', { align: 'center', size: 15, bold: true, cor: '111111' }) +
+    tx(3.9, 1.85, 5.5, 0.3, 'CONTROLE DE ESTOQUE', { align: 'center', size: 14, bold: true, cor: '111111' }) +
+    tx(5.4, 2.15, 5.5, 0.3, 'Gestão, Performance e Acuracidade', { align: 'center', size: 13, cor: '111111' }) +
+    im('capa.png', 4.4, 2.6, 4.2, 4.2, 'contain') +
+    tx(7.6, 3.15, 5.2, 0.75, `<b style="font-size:${ptPx(16)}px">CONTROLE DE ESTOQUE CIMI – ${ano}</b><br/><b>( ${esc(periodo)} )</b>`, { align: 'center', size: 11, cor: '111111' }), { base: false });
+  /* 2 — metodologia */
+  slide(titulo('Metodologia', 'Escopo e Metodologia da Conferência') + im('metodologia.png', 2.04, 1.95, 9.24, 4.23, 'contain') +
+    [['Coleta', 2.54], ['Comparação', 4.76], ['Análise', 6.94], ['Ajustes', 9.12]].map(([a, x]) => tx(x, 5.16, 1.74, 0.33, a, { align: 'center', font: FT, size: 18 })).join('') +
+    tx(0.9, 6.35, 11.5, 0.7, 'A análise compara a quantidade física identificada com os registros do sistema, classificando os itens em: <b>Baixa, Baixa 24 Horas, Certo e Falha Protheus.</b>', { align: 'center', size: 15 }));
+  /* 3 — impacto financeiro */
+  slide(titulo('Impacto Financeiro', 'Visão Financeira do Estoque', { w: 7 }) + im('financeiro.jpg', 8.33, 0.13, 5.0, 7.22) +
+    tx(0.4, 2.0, 4.6, 0.8, rsBR(d.valor), { align: 'center', font: FT, size: 36, cor: P.navy }) + tx(0.4, 2.8, 4.6, 0.35, 'Valor Total do Estoque', { align: 'center', font: FT, size: 15 }) +
+    tx(5.0, 2.0, 3.0, 0.8, numBR(t.total), { align: 'center', font: FT, size: 36, cor: P.navy }) + tx(5.0, 2.8, 3.0, 0.6, `Itens Analisados<br/><span style="font-size:${ptPx(11)}px">Total do período</span>`, { align: 'center', font: FT, size: 15 }) +
+    tx(1.5, 3.65, 5.6, 0.8, pctBR(t.acur), { align: 'center', font: FT, size: 40, cor: P.navy }) + tx(1.5, 4.45, 5.6, 0.75, `<span style="font-size:${ptPx(16)}px">Acuracidade Atual</span><br/>Itens classificados como Certo`, { align: 'center', font: FT, size: 11 }) +
+    tx(0.6, 5.55, 7.4, 1.3, 'O controle de estoque possui impacto direto na confiabilidade das informações financeiras e operacionais. A acuracidade dos registros é fundamental para a integridade dos dados e para a tomada de decisão gerencial.', { align: 'justify', size: 12 }));
+  /* 4 — resultados */
+  slide(titulo('Resultados', 'Resultado Consolidado da Classificação de Itens') + card(0.74, 2.13, 5.9, 4.39) +
+    svg(0.84, 2.2, 5.7, 4.25, colunas(570, 425, 'Quantidade de Itens por Classificação', ORD, ORD.map(a => t.q[a]), ORD.map(a => P.graf[a]))) +
+    tx(6.93, 2.2, 5.69, 0.4, 'Distribuição por Classificação', { font: FT, size: 18, cor: P.navy }) +
+    tabela(6.93, 2.81, 5.69, [2.3, 1.7, 1.69], [['Classificação', 'Quantidade', 'Percentual'], ...ORD.map(a => [{ t: a, cor: P.cor[a] }, numBR(t.q[a]), pctBR(pc(a))]),
+      [{ t: 'Total Geral', bold: true }, { t: numBR(t.total), bold: true }, { t: '100,00%', bold: true }]], { rowH: 0.6, size: 13 }));
+  /* 5 — indicadores */
+  slide(titulo('Indicadores-Chave', 'Distribuição Percentual – Acuracidade e Pontos de Alerta') +
+    svg(0.4, 2.0, 5.4, 4.8, pizza(540, 480, ORD.map(a => t.q[a]), ORD.map(a => P.graf[a]), ORD)) +
+    tx(5.95, 1.95, 6.5, 0.35, 'Leitura Executiva', { font: FT, size: 16, cor: P.navy }) +
+    [['Certo', `${numBR(t.q['Certo'])} itens com registros alinhados ao inventário físico`], ['Falha Protheus', `${numBR(t.q['Falha Protheus'])} itens com inconsistências sistêmicas a regularizar`],
+     ['Baixa', `${numBR(t.q['Baixa'])} itens com divergências que exigem ação`], ['Baixa 24 Horas', `${numBR(t.q['Baixa 24 Horas'])} itens em janela crítica de regularização`]].map(([a, txt], k) => {
+      const x = 5.95 + (k % 2) * 3.35, y = 2.4 + Math.floor(k / 2) * 2.3;
+      return card(x, y, 3.15, 2.1) + faixa(x, y, 2.1, P.cor[a]) + tx(x + 0.2, y + 0.15, 2.85, 0.6, `${pctBR(pc(a))} — ${a}`, { font: FT, size: 15, cor: P.cor[a], valign: 'top' }) +
+        tx(x + 0.2, y + 0.85, 2.85, 1.1, txt, { size: 11.5, valign: 'top' }); }).join(''));
+  /* 6 — evolução */
+  if (d.anteriores.length) {
+    const serie = [...d.anteriores, { ciclo: d.ciclo, t }];
+    const rot = serie.map(x => `${MESES[+x.ciclo.data_ref.slice(5, 7) - 1].slice(0, 3)}/${x.ciclo.data_ref.slice(2, 4)}`);
+    const dAc = (t.acur - ant.t.acur) * 100, dFa = (pc('Falha Protheus') - pcA(ant, 'Falha Protheus')) * 100;
+    slide(titulo('Evolução', 'Comparativo com os Trimestres Anteriores') + card(0.74, 2.05, 5.6, 4.6) +
+      svg(0.84, 2.1, 5.4, 4.5, linha(540, 450, 'Acuracidade por trimestre (% Certo)', rot, serie.map(x => +(100 * (x.t.acur || 0)).toFixed(2)), P.cor['Certo'])) +
+      tabela(6.6, 2.05, 6.0, [1.05, 0.8, 1.0, 0.95, 1.0, 1.2], [['Trimestre', 'Itens', 'Certo', 'Baixa', 'Baixa 24h', 'Falha Protheus'].map(c => ({ t: c, bold: true, align: 'center' })),
+        ...serie.map((x, k) => [rot[k], numBR(x.t.total), pctBR(x.t.acur), pctBR(pcA(x, 'Baixa')), pctBR(pcA(x, 'Baixa 24 Horas')), pctBR(pcA(x, 'Falha Protheus'))]
+          .map((c, j) => ({ t: c, align: 'center', bold: k === serie.length - 1, cor: j === 2 ? P.cor['Certo'] : P.txt })))], { rowH: 0.45, size: 11, cab: false }) +
+      tx(6.6, 2.05 + 0.45 * (serie.length + 1) + 0.3, 6.0, 0.9, `<b>Em relação a ${esc(nomeAnt)}:</b> acuracidade ${dAc >= 0 ? 'subiu' : 'caiu'} ${ppBR(dAc).replace('+', '')}; Falha Protheus ${dFa >= 0 ? 'subiu' : 'caiu'} ${ppBR(dFa).replace('+', '')}.`, { size: 12, valign: 'top' }));
+  }
+  /* 7 — riscos */
+  slide(titulo('Riscos', null, { x: 5.6, y: 1.0, w: 6.2 }) + tx(5.6, 1.72, 7.2, 0.35, `<span style="color:#D9480F">Falha Protheus</span> e Baixa 24 Horas: pontos de atenção do ciclo`, { font: FT, size: 16, cor: P.navy }) +
+    im('riscos.jpg', 0, 0.13, 5.0, 7.22) + card(5.6, 2.5, 7.0, 1.6) +
+    tx(5.8, 2.6, 6.6, 0.4, `${pctBR(pc('Falha Protheus'))} — Falha Protheus`, { font: FT, size: 15, cor: P.navy }) +
+    tx(5.8, 3.0, 6.6, 1.0, `${numBR(t.q['Falha Protheus'])} itens com quantidade física maior que o registro do sistema (inconsistência sistêmica, ex.: falta de entrada da Nota Fiscal de Compra). Devem ser regularizados no sistema e o registro da ocorrência mantido.`, { size: 11, valign: 'top' }) +
+    card(5.6, 4.3, 7.0, 1.4) + tx(5.8, 4.4, 6.6, 0.4, `${pctBR(pc('Baixa 24 Horas'))} — Baixa 24 Horas  |  ${pctBR(pc('Baixa'))} — Baixa`, { font: FT, size: 15, cor: P.navy }) +
+    tx(5.8, 4.8, 6.6, 0.8, `${numBR(t.q['Baixa 24 Horas'])} itens em janela crítica de regularização e ${numBR(t.q['Baixa'])} itens com divergência real que exigem ação de baixa no sistema.`, { size: 11, valign: 'top' }) +
+    box(5.6, 5.95, 7.0, 0.75, '', 'background:#E0EBE7') + tx(5.8, 5.95, 6.6, 0.75, `<b>Desvios totais:</b> ${pctBR(t.total ? t.desvios / t.total : null)} (${numBR(t.desvios)} itens) a tratar por correções sistêmicas.`, { size: 12 }));
+  /* 8 — principais ajustes */
+  if (d.top.length) slide(titulo('Principais Ajustes', 'Itens com maior impacto financeiro no ciclo') +
+    tabela(0.74, 2.0, 11.84, [1.0, 4.4, 1.2, 1.25, 0.95, 1.6, 1.44], [['Código', 'Descrição', 'Saldo sistema', 'Saldo ajustado', 'Ajuste', 'Classificação', 'Impacto (R$)'].map(c => ({ t: c, bold: true, align: 'center' })),
+      ...d.top.map(x => [x.codigo, { t: x.descricao || '', align: 'left' }, { t: numBR(x.saldo), align: 'right' }, { t: numBR(x.ajustado), align: 'right' },
+        { t: (x.dif > 0 ? '+' : '') + numBR(x.dif), align: 'right', cor: x.dif < 0 ? P.cor['Baixa'] : '7C3AED' }, { t: x.ajuste, cor: P.cor[x.ajuste] || P.txt },
+        { t: rsBR(x.imp).replace('R$-', '-R$'), align: 'right', cor: x.imp < 0 ? P.cor['Baixa'] : '7C3AED' }])], { rowH: 0.42, size: 10.5, cab: false }));
+  /* 9 — avaliação */
+  {
+    let txt;
+    if (ant) {
+      const dAc = (t.acur - ant.t.acur) * 100, dFa = (pc('Falha Protheus') - pcA(ant, 'Falha Protheus')) * 100;
+      const dBx = ((pc('Baixa') + pc('Baixa 24 Horas')) - (pcA(ant, 'Baixa') + pcA(ant, 'Baixa 24 Horas'))) * 100;
+      txt = `No ciclo de ${periodo}, a acuracidade foi de ${pctBR(t.acur)}, ${dAc >= 0 ? 'avanço' : 'recuo'} de ${ppBR(Math.abs(dAc)).replace('+', '')} em relação a ${nomeAnt} (${pctBR(ant.t.acur)}). ` +
+        `As Baixas e Baixas 24 Horas somam ${pctBR(pc('Baixa') + pc('Baixa 24 Horas'))} (${dBx <= 0 ? 'redução' : 'aumento'} de ${ppBR(Math.abs(dBx)).replace('+', '')}) ` +
+        `e a Falha Protheus ${dFa >= 0 ? 'subiu' : 'caiu'} para ${pctBR(pc('Falha Protheus'))}. ` +
+        (t.acur >= 0.95 ? 'O resultado atinge o patamar de excelência (acima de 95%).' : 'A meta de referência é elevar a acuracidade para acima de 95%.');
+    } else txt = `No ciclo de ${periodo}, a acuracidade foi de ${pctBR(t.acur)}, com ${numBR(t.desvios)} itens inconsistentes (${pctBR(t.total ? t.desvios / t.total : null)}). Este resultado passa a ser a referência para os próximos ciclos de conferência.`;
+    slide(titulo('Avaliação do Controle de Estoque e Oportunidades', null, { y: 0.45, w: 11.1 }) + im('avaliacao.jpg', 0.74, 1.3, 6.6, 2.9) +
+      tx(7.6, 1.3, 5.0, 2.9, esc(txt), { size: 12, align: 'justify', valign: 'top' }) +
+      [['1', 'Correção das Falhas Protheus', 'Regularizar no sistema as inconsistências identificadas (entradas de nota fiscal pendentes)'],
+       ['2', 'Tratamento das Baixas', 'Concluir as baixas pendentes, priorizando os itens em janela de 24 horas'],
+       ['3', 'Monitoramento Contínuo', 'Acompanhar os indicadores ciclo a ciclo para validar as correções e evitar recorrências']].map(([n, ti, de], k) => {
+        const x = 0.74 + k * 4.0;
+        return card(x, 4.5, 3.8, 2.5) + tx(x, 4.55, 3.8, 0.4, n, { align: 'center', font: FT, size: 16 }) + tx(x + 0.15, 4.95, 3.5, 0.6, ti, { align: 'center', font: FT, size: 15, cor: P.navy }) +
+          tx(x + 0.2, 5.6, 3.4, 1.2, de, { align: 'center', size: 11, valign: 'top' }); }).join(''));
+  }
+  /* 10 — recomendações */
+  slide(titulo('Recomendações', 'Recomendações Estratégicas para Sustentação das Correções de Estoque', { y: 1.3 }) +
+    [['1', 'Validar as Correções no Sistema', 'Confirmar que Falha Protheus e demais discrepâncias foram tratadas sistemicamente e que os registros refletem os ajustes'],
+     ['2', 'Monitorar a Estabilidade dos Indicadores', 'Acompanhar regularmente Baixa, Baixa 24 Horas e demais métricas para garantir que as correções permaneçam consistentes'],
+     ['3', 'Sustentar a Melhoria Contínua', 'Realizar validações periódicas ciclo a ciclo para manter as melhorias e identificar rapidamente qualquer desvio']].map(([n, ti, de], k) => {
+      const x = 0.74 + k * 4.0;
+      return box(x, 3.25, 3.8, 0.06, '', `background:#${P.teal}`) + card(x, 3.31, 3.8, 2.9) + box(x + 1.65, 3.05, 0.5, 0.5, '', `background:#${P.teal};border-radius:50%`) +
+        tx(x + 1.65, 3.05, 0.5, 0.5, n, { align: 'center', size: 12, cor: 'FFFFFF' }) + tx(x + 0.2, 3.65, 3.4, 0.75, ti, { align: 'center', font: FT, size: 15, cor: P.navy }) +
+        tx(x + 0.25, 4.45, 3.3, 1.6, de, { size: 11, valign: 'top' }); }).join(''));
+  /* 11 — próximos passos */
+  {
+    const bloco = (v, rot, x, y, cor, extra) => tx(x, y, 2.8, 0.55, v, { align: 'center', font: FT, size: 26, bold: true, cor }) +
+      tx(x, y + 0.5, 2.8, extra ? 0.55 : 0.35, extra ? `${rot}<br/><b style="font-size:${ptPx(10)}px;color:#1D4ED8">${extra}</b>` : rot, { align: 'center', size: 13 });
+    slide(titulo('Próximos Passos', 'Ações Imediatas e Monitoramento Contínuo', { y: 0.5 }) + im('proximos.png', 0.4, 2.3, 5.3, 3.15, 'contain') +
+      [['Regularização', 0.45], ['Monitoramento', 2.2], ['Nova Conferência', 3.95]].map(([a, x]) => tx(x, 5.6, 1.75, 0.5, a, { align: 'center', size: 12 })).join('') +
+      tx(6.4, 1.55, 6.0, 0.8, 'Parâmetro de referência Atual<br/>Referência para o Próximo Ciclo', { align: 'center', font: FT, size: 18, cor: P.navy }) +
+      bloco(numBR(t.total), 'Itens Analisados', 6.6, 2.45, '1D4ED8') + bloco(pctBR(t.acur), 'Corretos', 9.4, 2.45, '15803D') +
+      bloco(pctBR(pc('Falha Protheus')), 'Falha Protheus', 8.0, 3.5, 'D9480F') +
+      bloco(pctBR(pc('Baixa')), 'Baixa', 6.6, 4.55, 'DC2626', `${numBR(t.q['Baixa'])} itens`) + bloco(pctBR(pc('Baixa 24 Horas')), 'Baixa 24 Horas', 9.4, 4.55, 'E8590C', `${numBR(t.q['Baixa 24 Horas'])} itens`) +
+      tx(6.6, 5.95, 5.6, 0.95, `<span style="font-size:${ptPx(16)}px;color:#${P.navy}">Valor em Estoque</span><br/><b style="font-size:${ptPx(22)}px;color:#B8860B">${rsBR(d.valor)}</b>`, { align: 'center', font: FT }));
+  }
+  /* 12 — encerramento */
+  slide(im('encerramento.jpg', 8.33, 0.13, 5.0, 7.22) + tx(0.6, 1.4, 7.4, 1.8, `Controle de Estoque CIMI – ${ano}`, { align: 'center', font: FT, size: 40, cor: P.navy }) +
+    tx(0.6, 3.7, 7.4, 0.35, 'Gestão, Performance e Acuracidade', { size: 12 }) + box(0.6, 4.15, 7.4, 0.01, '', 'background:#9CA3AF') +
+    tx(0.6, 4.5, 7.4, 0.35, `Central Integrada de Manutenção da Infraestrutura – CIMI | ${nomeMes} de ${ano}`, { size: 12 }) +
+    tx(5.0, 6.35, 3.2, 0.8, 'Obrigado!', { align: 'right', font: FT, size: 30, cor: P.navy }));
+  return { slides, titulo: `Inventário Trimestral – ${periodo}`, arquivo: `Inventario_Trimestral_${nomeMes.normalize('NFD').replace(/[̀-ͯ]/g, '')}_${ano}` };
+}
+
+// Converte cada slide (HTML) em imagem JPEG
+async function slidesEmImagem(slides, rodape, escala = 2) {
+  const W = 1333, H = 750, host = document.createElement('div'), saida = [];
+  for (const html of slides) {
+    host.innerHTML = html;
+    const xhtml = new XMLSerializer().serializeToString(host.firstElementChild);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><foreignObject x="0" y="0" width="${W}" height="${H}">${xhtml}</foreignObject></svg>`;
+    const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    await im.decode();
+    const cv = document.createElement('canvas'); cv.width = W * escala; cv.height = H * escala;
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(im, 0, 0, cv.width, cv.height);
+    if (rodape) {
+      g.font = `${11 * escala}px Segoe UI, Arial, sans-serif`; g.fillStyle = 'rgba(40,45,69,.75)'; g.textAlign = 'right';
+      g.fillText(rodape, cv.width - 20 * escala, cv.height - 22 * escala);
+    }
+    saida.push({ url: cv.toDataURL('image/jpeg', 0.9), w: cv.width, h: cv.height });
+  }
+  return saida;
+}
+
+// PDF com uma imagem por página (não há texto nem dados editáveis no arquivo)
+function pdfDeImagens(imgs, titulo) {
+  const enc = new TextEncoder(), partes = [], offs = []; let pos = 0;
+  const add = x => { const b = typeof x === 'string' ? enc.encode(x) : x; partes.push(b); pos += b.length; };
+  const abre = id => { offs[id] = pos; add(`${id} 0 obj\n`); };
+  const n = imgs.length, W = 960, H = 540, tot = 4 + 3 * n;
+  const hex = s => 'FEFF' + [...s].map(c => c.charCodeAt(0).toString(16).padStart(4, '0')).join('').toUpperCase();
+  const agora = new Date(), dt = `D:${agora.getFullYear()}${String(agora.getMonth() + 1).padStart(2, '0')}${String(agora.getDate()).padStart(2, '0')}${String(agora.getHours()).padStart(2, '0')}${String(agora.getMinutes()).padStart(2, '0')}00${agora.getTimezoneOffset() > 0 ? '-' : '+'}${String(Math.floor(Math.abs(agora.getTimezoneOffset()) / 60)).padStart(2, '0')}'${String(Math.abs(agora.getTimezoneOffset()) % 60).padStart(2, '0')}'`;
+  add('%PDF-1.4\n');
+  abre(1); add('<< /Type /Catalog /Pages 2 0 R /PageMode /UseNone >>\nendobj\n');
+  abre(2); add(`<< /Type /Pages /Count ${n} /Kids [${imgs.map((_, i) => `${4 + 3 * i} 0 R`).join(' ')}] >>\nendobj\n`);
+  abre(3); add(`<< /Title <${hex(titulo)}> /Producer <${hex('Controle de Estoque – somente leitura')}> /CreationDate (${dt}) >>\nendobj\n`);
+  imgs.forEach((im, i) => {
+    const bin = atob(im.url.split(',')[1]), bytes = new Uint8Array(bin.length);
+    for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+    const cont = `q ${W} 0 0 ${H} 0 0 cm /Im0 Do Q`;
+    abre(4 + 3 * i); add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 ${6 + 3 * i} 0 R >> >> /Contents ${5 + 3 * i} 0 R >>\nendobj\n`);
+    abre(5 + 3 * i); add(`<< /Length ${cont.length} >>\nstream\n${cont}\nendstream\nendobj\n`);
+    abre(6 + 3 * i); add(`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`);
+    add(bytes); add('\nendstream\nendobj\n');
+  });
+  const xref = pos;
+  add(`xref\n0 ${tot}\n0000000000 65535 f \n` + offs.slice(1, tot).map(o => String(o).padStart(10, '0') + ' 00000 n \n').join(''));
+  add(`trailer\n<< /Size ${tot} /Root 1 0 R /Info 3 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(partes, { type: 'application/pdf' });
+}
+
+const agoraBR = () => new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+$('dashVer').onclick = async () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r) return toast('Selecione um ciclo fechado.', true);
+  const w = window.open('', '_blank');
+  if (!w) return toast('O navegador bloqueou a nova aba. Permita pop-ups para este site e tente de novo.', true);
+  w.document.write('<!DOCTYPE html><meta charset="UTF-8"><title>Gerando apresentação…</title><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#1f2430;color:#fff;font-family:Segoe UI,Arial,sans-serif">Gerando a apresentação…</body>');
+  w.document.close();
+  try {
+    const ap = slidesApresentacao(await dadosApresentacao(r), await carregarImagensPpt());
+    const marca = `${perfil.usuario} · ${agoraBR()}`;
+    const imgs = await slidesEmImagem(ap.slides, null, 1.5);
+    w.document.open();
+    w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${esc(ap.titulo)} – somente visualização</title><style>
+      body{margin:0;background:#1f2430;font-family:Segoe UI,Arial,sans-serif;-webkit-user-select:none;user-select:none}
+      header{position:sticky;top:0;z-index:2;background:#272D45;color:#fff;padding:10px 18px;display:flex;gap:12px;align-items:center}
+      header b{margin-right:auto;font-size:16px} header span{font-size:13px;opacity:.8}
+      .sl{position:relative;max-width:1200px;margin:18px auto 6px;box-shadow:0 4px 18px rgba(0,0,0,.45);overflow:hidden}
+      .sl img{width:100%;display:block;pointer-events:none}
+      .sl i{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:rotate(-18deg);font-style:normal;font-size:30px;font-weight:700;color:rgba(0,0,0,.07);pointer-events:none;white-space:nowrap}
+      .n{color:#9aa3b5;text-align:center;font-size:12px;margin-bottom:10px}
+      @media print{body{display:none!important}}
+    </style></head><body>
+    <header><b>${esc(ap.titulo)}</b><span>Somente visualização · ${esc(marca)}</span></header>
+    ${imgs.map((im, i) => `<div class="sl"><img src="${im.url}" alt="Slide ${i + 1}"><i>Visualização · ${esc(marca)}</i></div><div class="n">${i + 1} / ${imgs.length}</div>`).join('')}
+    <script>
+      document.addEventListener('contextmenu', e => e.preventDefault());
+      document.addEventListener('dragstart', e => e.preventDefault());
+      document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && ['s', 'p', 'u'].includes(e.key.toLowerCase())) e.preventDefault(); });
+    <\/script></body></html>`);
+    w.document.close();
+  } catch (e) { w.close(); falha(e); }
+};
+$('dashPdf').onclick = async () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r) return toast('Selecione um ciclo fechado.', true);
+  carregando(true);
+  try {
+    if (!ehAdmin) { await ok(sb.rpc('registrar_download', { p_id: pedidoAtual ? pedidoAtual.id : 0 })); }
+    const ap = slidesApresentacao(await dadosApresentacao(r), await carregarImagensPpt());
+    const imgs = await slidesEmImagem(ap.slides, `Documento somente leitura · baixado por ${perfil.usuario} em ${agoraBR()}`, 2);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(pdfDeImagens(imgs, ap.titulo)); a.download = ap.arquivo + '.pdf';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast('PDF gerado (somente leitura).');
+    if (!ehAdmin) await atualizarPedidoDash();
+  } catch (e) { falha(e); } finally { carregando(false); }
+};
+
+/* ---------- pedidos de download (Visualização) ---------- */
+let pedidoAtual = null;
+async function atualizarPedidoDash() {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value);
+  pedidoAtual = r ? (await ok(sb.from('pedidos_download').select('*').eq('ciclo_id', r.id).order('id', { ascending: false }).range(0, 0)))[0] || null : null;
+  const p = pedidoAtual, liberado = p && p.status === 'aprovado' && new Date(p.expira_em) > new Date();
+  $('dashPdf').classList.toggle('hide', !liberado);
+  $('dashPedir').classList.toggle('hide', !r || liberado || (p && p.status === 'pendente'));
+  const dh = v => new Date(v).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  $('dashPedStatus').innerHTML = !p ? '' : p.status === 'pendente' ? `<span class="tag t-conferencia">⏳ Pedido enviado em ${dh(p.criado_em)} — aguardando aprovação do ADM</span>`
+    : liberado ? `<span class="tag t-fechado">✔ Download liberado até ${dh(p.expira_em)}</span>`
+    : p.status === 'negado' ? `<span class="tag t-Baixa" title="${esc(p.resposta || '')}">✕ Pedido recusado${p.resposta ? ': ' + esc(p.resposta) : ''}</span>`
+    : `<span class="tag t-Fora">Liberação de download expirada</span>`;
+}
+$('dashPedir').onclick = () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value); if (!r) return;
+  $('pedInfo').textContent = `Apresentação de ${mesCiclo(r)}. O pedido vai para o administrador; depois de aprovado, o botão de download fica liberado por 24 horas (arquivo PDF somente leitura).`;
+  $('pedMotivo').value = ''; $('pedErro').textContent = ''; $('mPed').classList.remove('hide'); setTimeout(() => $('pedMotivo').focus(), 50);
+};
+$('pedCancelar').onclick = () => $('mPed').classList.add('hide');
+$('pedOk').onclick = async () => {
+  const r = resumo.find(x => String(x.id) === $('dashCiclo').value), m = $('pedMotivo').value.trim();
+  if (m.length < 5) return $('pedErro').textContent = 'Descreva o motivo do download.';
+  try {
+    carregando(true); await ok(sb.rpc('pedir_download', { p_ciclo: r.id, p_motivo: m }));
+    $('mPed').classList.add('hide'); toast('Pedido enviado ao administrador.'); await atualizarPedidoDash();
+  } catch (e) { $('pedErro').textContent = e.message; } finally { carregando(false); }
+};
+
+/* =====================================================================
+   USUÁRIOS E PEDIDOS (somente ADM)
+   ===================================================================== */
+async function telaUsuarios() {
+  const [us, peds] = await Promise.all([ok(sb.from('perfis').select('*').order('papel').order('usuario')),
+    ok(sb.from('pedidos_download').select('*').order('id', { ascending: false }))]);
+  const dh = v => v ? new Date(v).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const pend = peds.filter(p => p.status === 'pendente');
+  $('badgePed').textContent = pend.length || ''; pendentesVistos = pend.map(p => p.id);
+  const situacao = p => p.status === 'pendente' ? '<span class="tag t-conferencia">⏳ Aguardando</span>'
+    : p.status === 'negado' ? '<span class="tag t-Baixa">✕ Recusado</span>'
+    : new Date(p.expira_em) > new Date() ? `<span class="tag t-fechado">✔ Liberado até ${dh(p.expira_em)}</span>` : '<span class="tag t-Fora">Aprovado (expirado)</span>';
+  const ciclo = id => { const c = cicloPorId(id); return c ? mesCiclo(c) : '–'; };
+  $('usPedidos').innerHTML = peds.length ? `<table><thead><tr><th>Pedido em</th><th>Usuário</th><th>Apresentação</th><th>Motivo</th><th>Situação</th><th class="n">Downloads</th><th>Resposta</th><th></th></tr></thead><tbody>
+    ${peds.map(p => `<tr><td>${dh(p.criado_em)}</td><td><b>${esc(p.usuario)}</b></td><td>${esc(ciclo(p.ciclo_id))}</td><td class="desc">${esc(p.motivo)}</td><td>${situacao(p)}</td>
+      <td class="n">${p.downloads || ''}</td><td class="desc">${esc(p.resposta || '')}${p.decidido_em ? `<br><small style="color:var(--mut)">${dh(p.decidido_em)}</small>` : ''}</td>
+      <td style="white-space:nowrap">${p.status === 'pendente' ? `<button class="btnOk pedAprovar" data-id="${p.id}">✔ Aprovar</button> <button class="btnDesf perigo pedNegar" data-id="${p.id}">✕ Recusar</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="vazio">Nenhum pedido de download.</div>';
+  $('usTabela').innerHTML = `<table><thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Senha</th><th>Situação</th><th></th></tr></thead><tbody>
+    ${us.map(u => { const eu = u.usuario === perfil.usuario;
+      return `<tr><td><b>${esc(u.usuario)}</b></td><td>${esc(u.email)}</td><td>${u.papel === 'admin' ? '<span class="tag t-correcao">ADM</span>' : '<span class="tag t-Fora">Visualização</span>'}</td>
+      <td>${u.trocar_senha ? `<span class="tag t-conferencia" title="Resetada em ${dh(u.senha_resetada_em)}">Provisória (123456) – aguardando troca</span>` : `<span class="tag t-fechado">Definida${u.senha_alterada_em ? ' em ' + dh(u.senha_alterada_em) : ''}</span>`}</td>
+      <td>${u.ativo ? '<span class="tag t-Certo">Ativo</span>' : '<span class="tag t-Baixa">Bloqueado</span>'}</td>
+      <td style="white-space:nowrap">${eu ? '<small style="color:var(--mut)">você</small>' : `<button class="btnDesf usReset" data-u="${esc(u.usuario)}">↺ Resetar senha (123456)</button> <button class="btnDesf usAtivo" data-u="${esc(u.usuario)}" data-a="${u.ativo ? 0 : 1}">${u.ativo ? '⛔ Bloquear' : '✔ Desbloquear'}</button>`}</td></tr>`; }).join('')}</tbody></table>`;
+}
+$('aba-usuarios').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  try {
+    if (b.classList.contains('usReset')) {
+      if (!confirm(`Resetar a senha de ${b.dataset.u} para a provisória 123456?\nNo próximo acesso a pessoa terá que criar uma nova senha.`)) return;
+      carregando(true); await ok(sb.rpc('resetar_senha', { p_usuario: b.dataset.u })); toast(`Senha de ${b.dataset.u} resetada para 123456.`);
+    } else if (b.classList.contains('usAtivo')) {
+      const at = b.dataset.a === '1'; if (!confirm(`${at ? 'Desbloquear' : 'Bloquear'} o acesso de ${b.dataset.u}?`)) return;
+      carregando(true); await ok(sb.rpc('definir_ativo', { p_usuario: b.dataset.u, p_ativo: at })); toast(`${b.dataset.u} ${at ? 'desbloqueado' : 'bloqueado'}.`);
+    } else if (b.classList.contains('pedAprovar')) {
+      if (!confirm('Aprovar o pedido? O download fica liberado por 24 horas (PDF somente leitura).')) return;
+      carregando(true); await ok(sb.rpc('decidir_pedido', { p_id: +b.dataset.id, p_aprovar: true, p_resposta: '' })); toast('Pedido aprovado.');
+    } else if (b.classList.contains('pedNegar')) {
+      const m = prompt('Motivo da recusa (opcional):'); if (m === null) return;
+      carregando(true); await ok(sb.rpc('decidir_pedido', { p_id: +b.dataset.id, p_aprovar: false, p_resposta: m })); toast('Pedido recusado.');
+    } else if (b.id === 'usCriar') {
+      const u = $('usNovoUser').value.trim().toLowerCase(), em = $('usNovoEmail').value.trim().toLowerCase();
+      if (!u || !em) return toast('Informe o usuário e o e-mail.', true);
+      carregando(true); await ok(sb.rpc('criar_usuario', { p_usuario: u, p_email: em }));
+      $('usNovoUser').value = $('usNovoEmail').value = ''; toast(`Usuário ${u} criado com a senha provisória 123456.`);
+    } else return;
+    await telaUsuarios();
+  } catch (err) { falha(err); } finally { carregando(false); }
+});
 
 /* ---------- setas para rolar as colunas das tabelas ---------- */
 function ligarSetas(t) {
