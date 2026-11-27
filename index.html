@@ -131,6 +131,8 @@
   .kpi b{font-size:22px;display:block;margin-top:2px}
   .kpi span{font-size:12px;color:var(--mut)}
   canvas{max-height:280px}
+  .areaGraf{position:relative;height:380px}
+  .areaGraf canvas{max-height:none}
   .leitor .soAdmin{display:none!important}
   body:not(.leitor) .soLeitor{display:none!important}
   .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--verm);color:#fff;font-size:11px;font-weight:700;text-align:center;margin-left:4px}
@@ -359,8 +361,8 @@
         <div class="painel"><h3>Distribuição por classificação</h3><div class="tabela" id="dashDist" style="max-height:none"></div></div>
       </div>
       <div class="grade">
-        <div class="painel"><h3>Distribuição percentual – acuracidade e pontos de alerta</h3><canvas id="gPct"></canvas></div>
-        <div class="painel"><h3>Acuracidade por ciclo (% de itens Certo)</h3><canvas id="gAcur"></canvas></div>
+        <div class="painel"><h3>Distribuição percentual – acuracidade e pontos de alerta</h3><div class="areaGraf"><canvas id="gPct"></canvas></div></div>
+        <div class="painel"><h3>Acuracidade por ciclo (% de itens Certo)</h3><div class="areaGraf"><canvas id="gAcur"></canvas></div></div>
       </div>
       <div class="painel" style="margin-bottom:12px"><h3>Comparativo geral por ciclo</h3><div class="tabela" id="dashTabela" style="max-height:none"></div></div>
       <div class="painel" style="margin-bottom:12px"><h3>Classificação por ciclo</h3><canvas id="gComp"></canvas></div>
@@ -1645,28 +1647,58 @@ $('hojeExport').onclick = () => {
 let resumo = [];
 const CORES = { 'Certo': '#1E7B4A', 'Baixa': '#B42318', 'Baixa 24 Horas': '#D08A00', 'Falha Protheus': '#5B3FA8' };
 // Rótulos em evidência nos gráficos (percentuais e quantidades), como na apresentação
+function caixaTexto(ctx, txt, x, y, o) {
+  ctx.font = `700 ${o.tamanho}px Segoe UI, Arial, sans-serif`;
+  const w = ctx.measureText(txt).width + 14, h = o.tamanho + 10;
+  if (o.alinhar === 'left') x += w / 2; else if (o.alinhar === 'right') x -= w / 2;
+  if (o.fundo) {
+    ctx.fillStyle = o.fundo; ctx.strokeStyle = o.borda || o.fundo; ctx.lineWidth = 1.5;
+    ctx.beginPath(); (ctx.roundRect ? ctx.roundRect(x - w / 2, y - h / 2, w, h, 6) : ctx.rect(x - w / 2, y - h / 2, w, h)); ctx.fill(); ctx.stroke();
+  }
+  ctx.fillStyle = o.cor; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(txt, x, y + 0.5);
+}
 function rotulos(texto, o = {}) {
   return { id: 'rotulos', afterDatasetsDraw(chart) {
-    const ctx = chart.ctx, tipo = chart.config.type; let peq = 0;
+    const ctx = chart.ctx, tipo = chart.config.type, area = chart.chartArea;
     ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     chart.data.datasets.forEach((ds, di) => {
       const meta = chart.getDatasetMeta(di); if (meta.hidden) return;
+      if (tipo === 'pie') {   // dentro da fatia; fatias pequenas ficam do lado de fora, com linha guia e sem sobrepor
+        const fora = { esq: [], dir: [] };
+        meta.data.forEach((el, i) => {
+          const v = ds.data[i]; if (!v) return;
+          const txt = texto(v, i, di), a = (el.startAngle + el.endAngle) / 2, frac = (el.endAngle - el.startAngle) / (2 * Math.PI);
+          if (frac >= 0.12) return caixaTexto(ctx, txt, el.x + el.outerRadius * 0.6 * Math.cos(a), el.y + el.outerRadius * 0.6 * Math.sin(a), { tamanho: o.tamanho || 16, cor: '#fff' });
+          const cos = Math.cos(a), sin = Math.sin(a);
+          (cos >= 0 ? fora.dir : fora.esq).push({ txt, cor: ds.backgroundColor[i], px: el.x + el.outerRadius * cos, py: el.y + el.outerRadius * sin,
+            ex: el.x + (el.outerRadius + 14) * cos, y: el.y + (el.outerRadius + 14) * sin, cx: el.x, r: el.outerRadius });
+        });
+        for (const [lado, lst] of Object.entries(fora)) {
+          lst.sort((p, q) => p.y - q.y);
+          if (lst.length && lst[0].y < 18) lst[0].y = 18;
+          for (let k = 1; k < lst.length; k++) if (lst[k].y - lst[k - 1].y < 28) lst[k].y = lst[k - 1].y + 28;
+          const exced = lst.length ? lst[lst.length - 1].y - (area.bottom - 12) : 0;
+          if (exced > 0) lst.forEach(p => p.y -= exced);
+          lst.forEach(p => {
+            const lx = p.cx + (lado === 'dir' ? 1 : -1) * (p.r + 30);
+            ctx.strokeStyle = p.cor; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.ex, p.y); ctx.lineTo(lx, p.y); ctx.stroke();
+            caixaTexto(ctx, p.txt, lx + (lado === 'dir' ? 4 : -4), p.y, { tamanho: o.tamanho || 16, cor: '#2B2F33', fundo: '#fff', borda: p.cor, alinhar: lado === 'dir' ? 'left' : 'right' });
+          });
+        }
+        return;
+      }
       meta.data.forEach((el, i) => {
         const v = ds.data[i]; if (v == null || (tipo !== 'line' && !v)) return;
         const linhas = String(texto(v, i, di) || '').split('\n').filter(Boolean); if (!linhas.length) return;
-        let x = el.x, y, cor = o.cor || '#2B2F33', fora = true;
-        if (tipo === 'pie') {
-          const a = (el.startAngle + el.endAngle) / 2, frac = (el.endAngle - el.startAngle) / (2 * Math.PI);
-          fora = frac < 0.07;
-          const r = fora ? el.outerRadius + (peq++ % 2 ? 34 : 16) : el.outerRadius * 0.62;
-          x = el.x + r * Math.cos(a); y = el.y + r * Math.sin(a); cor = fora ? '#2B2F33' : '#fff';
-        } else if (tipo === 'line') { y = el.y - 16; }
-        else if (o.dentro) { if (Math.abs(el.base - el.y) < 16 * linhas.length) return; y = (el.y + el.base) / 2; cor = '#fff'; fora = false; }
-        else { y = el.y - 10 - (linhas.length - 1) * 8; }
+        if (tipo === 'line') {   // etiqueta com fundo branco acima do ponto
+          return caixaTexto(ctx, linhas[0], el.x, Math.max(area.top - 4, el.y - 24), { tamanho: o.tamanho || 15, cor: o.cor || '#1E7B4A', fundo: '#fff', borda: o.cor || '#1E7B4A' });
+        }
+        let x = el.x, y, cor = o.cor || '#2B2F33';
+        if (o.dentro) { if (Math.abs(el.base - el.y) < 16 * linhas.length) return; y = (el.y + el.base) / 2; cor = '#fff'; }
+        else y = el.y - 10 - (linhas.length - 1) * 8;
         linhas.forEach((l, k) => {
-          const tam = k === 0 ? (o.tamanho || 13) : (o.tamanho2 || 11);
-          ctx.font = `${k === 0 ? 700 : 500} ${tam}px Segoe UI, Arial, sans-serif`; ctx.fillStyle = cor;
-          ctx.fillText(l, x, y + (k - (linhas.length - 1) / 2) * (o.dentro || !fora ? 15 : 16));
+          ctx.font = `${k === 0 ? 700 : 500} ${k === 0 ? (o.tamanho || 13) : (o.tamanho2 || 11)}px Segoe UI, Arial, sans-serif`; ctx.fillStyle = cor;
+          ctx.fillText(l, x, y + (k - (linhas.length - 1) / 2) * 16);
         });
       });
     });
@@ -1718,13 +1750,15 @@ async function desenharDashboard() {
     plugins: [rotulos((v, i) => `${fP(pc(ordem[i]))}\n${fN(v)} itens`, { tamanho: 15, tamanho2: 12 })],
     options: { layout: { padding: { top: 10 } }, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grace: '18%' } } } });
   grafico('gPct', { type: 'pie', data: { labels: ordem.map(a => `${a} — ${fP(pc(a))}`), datasets: [{ data: ordem.map(a => t.q[a]), backgroundColor: ordem.map(a => CORES[a]), borderColor: '#fff', borderWidth: 2 }] },
-    plugins: [rotulos(v => fP(t.total ? v / t.total : null), { tamanho: 15 })],
-    options: { layout: { padding: 44 }, plugins: { legend: { position: 'right', labels: { font: { size: 13, weight: '600' } } }, tooltip: { callbacks: { label: x => `${x.raw} itens` } } } } });
+    plugins: [rotulos(v => fP(t.total ? v / t.total : null), { tamanho: 16 })],
+    options: { maintainAspectRatio: false, layout: { padding: { top: 30, bottom: 16, left: 10, right: 10 } },
+      plugins: { legend: { position: 'right', labels: { font: { size: 14, weight: '600' }, padding: 14 } }, tooltip: { callbacks: { label: x => `${x.raw} itens` } } } } });
   const rot = resumo.map(x => fD(x.data_ref));
   grafico('gAcur', { type: 'line', data: { labels: rot, datasets: [{ label: 'Acuracidade', data: resumo.map(x => { const a = totaisCiclo(x).acur; return a == null ? null : +(100 * a).toFixed(2); }),
     borderColor: '#1E7B4A', backgroundColor: '#1E7B4A', borderWidth: 3, pointRadius: 5, tension: .2 }] },
-    plugins: [rotulos(v => fP(v / 100), { tamanho: 14, cor: '#1E7B4A' })],
-    options: { layout: { padding: { top: 26, left: 24, right: 34 } }, scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: x => fP(x.raw / 100) } } } } });
+    plugins: [rotulos(v => fP(v / 100), { tamanho: 15, cor: '#1E7B4A' })],
+    options: { maintainAspectRatio: false, layout: { padding: { top: 34, left: 10, right: 10 } },
+      scales: { x: { offset: true, grid: { display: false } }, y: { min: 0, max: 100, ticks: { callback: v => v + '%', stepSize: 20 } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: x => fP(x.raw / 100) } } } } });
   grafico('gComp', { type: 'bar', data: { labels: rot, datasets: ordem.map(a => ({ label: a, backgroundColor: CORES[a], data: resumo.map(x => totaisCiclo(x).q[a]) })) },
     plugins: [rotulos((v, i) => { const z = totaisCiclo(resumo[i]); return z.total ? fP(v / z.total) : ''; }, { dentro: true, tamanho: 12 })],
     options: { scales: { x: { stacked: true }, y: { stacked: true } } } });
