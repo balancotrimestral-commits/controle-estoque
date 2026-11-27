@@ -365,7 +365,7 @@
         <div class="painel"><h3>Acuracidade por ciclo (% de itens Certo)</h3><div class="areaGraf"><canvas id="gAcur"></canvas></div></div>
       </div>
       <div class="painel" style="margin-bottom:12px"><h3>Comparativo geral por ciclo</h3><div class="tabela" id="dashTabela" style="max-height:none"></div></div>
-      <div class="painel" style="margin-bottom:12px"><h3>Classificação por ciclo</h3><canvas id="gComp"></canvas></div>
+      <div class="painel" style="margin-bottom:12px"><h3>Classificação por ciclo</h3><div class="areaGraf" style="height:480px"><canvas id="gComp"></canvas></div></div>
       <div class="painel" style="margin-bottom:12px"><h3>10 maiores ajustes do ciclo (R$)</h3><div class="tabela" id="dashTop" style="max-height:none"></div></div>
       <div class="painel" style="border-left:4px solid #6B7280;border-radius:0 8px 8px 0"><div class="barra" style="margin-bottom:6px"><h3 style="margin:0">Itens fora do centro de custo (somente consulta – não entram no inventário nem na apresentação)</h3><span class="esp"></span><button id="dashForaRel" class="soAdmin">Emitir relatório (Excel)</button></div><div id="dashFora"></div></div>
     </section>
@@ -1659,7 +1659,7 @@ function caixaTexto(ctx, txt, x, y, o) {
 }
 function rotulos(texto, o = {}) {
   return { id: 'rotulos', afterDatasetsDraw(chart) {
-    const ctx = chart.ctx, tipo = chart.config.type, area = chart.chartArea;
+    const ctx = chart.ctx, tipo = chart.config.type, area = chart.chartArea, laterais = {};
     ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     chart.data.datasets.forEach((ds, di) => {
       const meta = chart.getDatasetMeta(di); if (meta.hidden) return;
@@ -1687,6 +1687,16 @@ function rotulos(texto, o = {}) {
         }
         return;
       }
+      if (o.dentro) {   // colunas empilhadas: dentro da faixa; faixas finas ganham etiqueta ao lado da coluna
+        meta.data.forEach((el, i) => {
+          const v = ds.data[i]; if (!v) return;
+          const txt = texto(v, i, di); if (!txt) return;
+          const h = Math.abs(el.base - el.y), ym = (el.y + el.base) / 2;
+          if (h >= 24) return caixaTexto(ctx, txt, el.x, ym, { tamanho: o.tamanho || 14, cor: '#fff' });
+          (laterais[i] = laterais[i] || []).push({ txt, cor: ds.backgroundColor, px: el.x + el.width / 2, py: ym, y: ym });
+        });
+        return;
+      }
       meta.data.forEach((el, i) => {
         const v = ds.data[i]; if (v == null || (tipo !== 'line' && !v)) return;
         const linhas = String(texto(v, i, di) || '').split('\n').filter(Boolean); if (!linhas.length) return;
@@ -1700,6 +1710,16 @@ function rotulos(texto, o = {}) {
           ctx.font = `${k === 0 ? 700 : 500} ${k === 0 ? (o.tamanho || 13) : (o.tamanho2 || 11)}px Segoe UI, Arial, sans-serif`; ctx.fillStyle = cor;
           ctx.fillText(l, x, y + (k - (linhas.length - 1) / 2) * 16);
         });
+      });
+    });
+    Object.values(laterais).forEach(lst => {   // etiquetas laterais sem sobrepor (de baixo para cima)
+      lst.sort((p, q) => q.y - p.y);
+      if (lst[0].y > area.bottom - 12) lst[0].y = area.bottom - 12;
+      for (let k = 1; k < lst.length; k++) if (lst[k - 1].y - lst[k].y < 26) lst[k].y = lst[k - 1].y - 26;
+      lst.forEach(p => {
+        const lx = p.px + 22;
+        ctx.strokeStyle = p.cor; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(p.px, p.py); ctx.lineTo(p.px + 10, p.y); ctx.lineTo(lx, p.y); ctx.stroke();
+        caixaTexto(ctx, p.txt, lx, p.y, { tamanho: o.tamanho || 14, cor: '#2B2F33', fundo: '#fff', borda: p.cor, alinhar: 'left' });
       });
     });
     ctx.restore();
@@ -1760,8 +1780,10 @@ async function desenharDashboard() {
     options: { maintainAspectRatio: false, layout: { padding: { top: 34, left: 10, right: 10 } },
       scales: { x: { offset: true, grid: { display: false } }, y: { min: 0, max: 100, ticks: { callback: v => v + '%', stepSize: 20 } } }, plugins: { legend: { display: false }, tooltip: { callbacks: { label: x => fP(x.raw / 100) } } } } });
   grafico('gComp', { type: 'bar', data: { labels: rot, datasets: ordem.map(a => ({ label: a, backgroundColor: CORES[a], data: resumo.map(x => totaisCiclo(x).q[a]) })) },
-    plugins: [rotulos((v, i) => { const z = totaisCiclo(resumo[i]); return z.total ? fP(v / z.total) : ''; }, { dentro: true, tamanho: 12 })],
-    options: { scales: { x: { stacked: true }, y: { stacked: true } } } });
+    plugins: [rotulos((v, i) => { const z = totaisCiclo(resumo[i]); return z.total ? fP(v / z.total) : ''; }, { dentro: true, tamanho: 14 })],
+    options: { maintainAspectRatio: false, datasets: { bar: { barPercentage: 0.6, categoryPercentage: 0.9 } },
+      plugins: { legend: { labels: { font: { size: 13, weight: '600' } } } },
+      scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 13, weight: '600' } } }, y: { stacked: true } } } });
   $('dashTabela').innerHTML = `<table><thead><tr><th>Mês conferência</th><th class="n">Itens analisados</th><th class="n">Valor em estoque</th><th class="n">Certo</th>
     <th class="n">Baixa</th><th class="n">Baixa 24 Horas</th><th class="n">Falha Protheus</th><th class="n">Acuracidade</th><th class="n">Desvios</th></tr></thead><tbody>
     ${resumo.map(x => { const z = totaisCiclo(x); const p = a => z.total ? ` <small style="color:var(--mut)">(${fP(z.q[a] / z.total)})</small>` : '';
